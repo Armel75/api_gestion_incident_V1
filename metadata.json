@@ -1,0 +1,5 @@
+{
+  "name": "enterprise-node-api",
+  "description": "Enterprise Node.js REST API with Clean Architecture, Prisma, and RBAC.",
+  "requestFramePermissions": []
+}

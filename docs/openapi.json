@@ -1,0 +1,250 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Enterprise Node.js API",
+    "description": "API REST Backend pour SI d'entreprise On-Premise. Architecture Clean / Hexagonale.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Équipe Backend",
+      "email": "backend@enterprise.local"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000/api/v1",
+      "description": "Serveur de développement"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "error" },
+          "code": { "type": "string", "example": "INTERNAL_ERROR" },
+          "message": { "type": "string" },
+          "correlationId": { "type": "string" }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "username": { "type": "string" },
+          "isActive": { "type": "boolean" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Incident": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "status": { "type": "string", "enum": ["OPEN", "IN_PROGRESS", "CLOSED"] },
+          "reporterId": { "type": "string", "format": "uuid" },
+          "siteId": { "type": "string", "format": "uuid" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Liveness Probe",
+        "security": [],
+        "responses": {
+          "200": { "description": "Server is UP" }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "summary": "Readiness Probe",
+        "security": [],
+        "responses": {
+          "200": { "description": "Database connection OK" },
+          "503": { "description": "Database unreachable" }
+        }
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "summary": "Inscription utilisateur",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string", "minLength": 3 },
+                  "password": { "type": "string", "minLength": 6 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Utilisateur créé" },
+          "400": { "description": "Données invalides" }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Connexion (Rate Limited)",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accessToken": { "type": "string" },
+                    "refreshToken": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "429": { "description": "Trop de tentatives (Brute-force protection)" }
+        }
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "summary": "Rafraîchir Access Token",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["refreshToken"],
+                "properties": {
+                  "refreshToken": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Nouveaux tokens générés" },
+          "401": { "description": "Token invalide ou révoqué (Security Alert)" }
+        }
+      }
+    },
+    "/incidents": {
+      "get": {
+        "summary": "Lister les incidents",
+        "description": "Nécessite la permission INCIDENT_READ",
+        "parameters": [
+          { "in": "query", "name": "page", "schema": { "type": "integer", "default": 1 } },
+          { "in": "query", "name": "size", "schema": { "type": "integer", "default": 10 } },
+          { "in": "query", "name": "status", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Liste récupérée" }
+        }
+      },
+      "post": {
+        "summary": "Créer un incident",
+        "description": "Nécessite la permission INCIDENT_CREATE",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title", "siteId", "subProcessId", "subCategoryId"],
+                "properties": {
+                  "title": { "type": "string" },
+                  "description": { "type": "string" },
+                  "siteId": { "type": "string", "format": "uuid" },
+                  "subProcessId": { "type": "string", "format": "uuid" },
+                  "subCategoryId": { "type": "string", "format": "uuid" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Incident créé" }
+        }
+      }
+    },
+    "/incidents/{id}": {
+      "get": {
+        "summary": "Détail incident",
+        "parameters": [{ "in": "path", "name": "id", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Trouvé" },
+          "404": { "description": "Non trouvé" }
+        }
+      },
+      "put": {
+        "summary": "Mise à jour incident",
+        "description": "Nécessite la permission INCIDENT_UPDATE",
+        "parameters": [{ "in": "path", "name": "id", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "status": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Mis à jour" }
+        }
+      },
+      "delete": {
+        "summary": "Suppression incident (Soft delete)",
+        "description": "Nécessite la permission INCIDENT_DELETE",
+        "parameters": [{ "in": "path", "name": "id", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "204": { "description": "Supprimé" }
+        }
+      }
+    }
+  }
+}
