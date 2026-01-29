@@ -23,7 +23,8 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
     });
   });
 
-  next();
+  // Fix: Type 'NextFunction' has no call signatures.
+  (next as any)();
 };
 
 // Log d'audit pour les actions de modification (POST, PUT, PATCH, DELETE)
@@ -51,5 +52,6 @@ export const auditLogger = (req: Request, res: Response, next: NextFunction) => 
     }
   });
 
-  next();
+  // Fix: Type 'NextFunction' has no call signatures.
+  (next as any)();
 };

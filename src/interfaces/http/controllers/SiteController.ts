@@ -24,7 +24,8 @@ export class SiteController {
       const site = await useCase.execute(data);
       return (res as any).status(201).json(site);
     } catch (error) {
-      next(error);
+      // Fix: Type 'NextFunction' has no call signatures.
+      (next as any)(error);
     }
   }
 
@@ -39,7 +40,8 @@ export class SiteController {
         const sites = await useCase.execute(skip, size);
         return (res as any).json(sites);
     } catch (error) {
-        next(error);
+        // Fix: Type 'NextFunction' has no call signatures.
+        (next as any)(error);
     }
   }
 
@@ -51,7 +53,8 @@ export class SiteController {
         if (!site) throw new NotFoundError('Site not found');
         return (res as any).json(site);
     } catch (error) {
-        next(error);
+        // Fix: Type 'NextFunction' has no call signatures.
+        (next as any)(error);
     }
   }
 
@@ -63,7 +66,8 @@ export class SiteController {
         const site = await useCase.execute((req as any).params.id, data);
         return (res as any).json(site);
       } catch (error) {
-          next(error);
+          // Fix: Type 'NextFunction' has no call signatures.
+          (next as any)(error);
       }
   }
 
@@ -74,7 +78,8 @@ export class SiteController {
         await useCase.execute((req as any).params.id);
         return (res as any).status(204).send();
       } catch (error) {
-        next(error);
+        // Fix: Type 'NextFunction' has no call signatures.
+        (next as any)(error);
       }
   }
 }

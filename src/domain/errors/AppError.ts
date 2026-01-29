@@ -1,3 +1,4 @@
+
 export class AppError extends Error {
   public readonly statusCode: number;
   public readonly code: string;
@@ -9,7 +10,8 @@ export class AppError extends Error {
     this.statusCode = statusCode;
     this.code = code;
     this.isOperational = isOperational;
-    Error.captureStackTrace(this);
+    // Fix: Property 'captureStackTrace' does not exist on type 'ErrorConstructor'.
+    (Error as any).captureStackTrace(this);
   }
 }
 

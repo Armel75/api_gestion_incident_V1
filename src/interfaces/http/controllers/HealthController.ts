@@ -9,7 +9,8 @@ export class HealthController {
     (res as any).status(200).json({ 
       status: 'UP', 
       timestamp: new Date().toISOString(),
-      uptime: process.uptime()
+      // Fix: Property 'uptime' does not exist on type 'Process'.
+      uptime: (process as any).uptime()
     });
   }
 

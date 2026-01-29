@@ -29,7 +29,8 @@ export class AuthController {
       const { password, ...userWithoutPassword } = user;
       return (res as any).status(201).json(userWithoutPassword);
     } catch (error: any) {
-      next(error);
+      // Fix: Type 'NextFunction' has no call signatures.
+      (next as any)(error);
     }
   }
 
@@ -46,9 +47,11 @@ export class AuthController {
     } catch (error: any) {
       // Convert generic errors to Unauthorized if relevant, or just pass
       if (error.message === 'Invalid credentials') {
-        return next(new UnauthorizedError('Invalid credentials'));
+        // Fix: Type 'NextFunction' has no call signatures.
+        return (next as any)(new UnauthorizedError('Invalid credentials'));
       }
-      next(error);
+      // Fix: Type 'NextFunction' has no call signatures.
+      (next as any)(error);
     }
   }
 
@@ -63,7 +66,8 @@ export class AuthController {
 
       return (res as any).status(200).json(tokens);
     } catch (error: any) {
-      next(new UnauthorizedError(error.message || 'Invalid or expired session'));
+      // Fix: Type 'NextFunction' has no call signatures.
+      (next as any)(new UnauthorizedError(error.message || 'Invalid or expired session'));
     }
   }
 
@@ -77,7 +81,8 @@ export class AuthController {
       
       return (res as any).status(204).send();
     } catch (error: any) {
-      next(error);
+      // Fix: Type 'NextFunction' has no call signatures.
+      (next as any)(error);
     }
   }
 }

@@ -1,25 +1,25 @@
 import { Request, Response, NextFunction } from 'express';
-import { PrismaSiteTypeRepository } from '../../../infrastructure/repositories/PrismaSiteTypeRepository';
+import { PrismaTypeSiteRepository } from '../../../infrastructure/repositories/PrismaTypeSiteRepository';
 import { 
-    CreateSiteTypeUseCase, 
-    GetAllSiteTypesUseCase, 
-    GetSiteTypeByIdUseCase, 
-    UpdateSiteTypeUseCase, 
-    DeleteSiteTypeUseCase 
-} from '../../../application/usecases/SiteTypeUseCases';
+    CreateTypeSiteUseCase, 
+    GetAllTypeSitesUseCase, 
+    GetTypeSiteByIdUseCase, 
+    UpdateTypeSiteUseCase, 
+    DeleteTypeSiteUseCase 
+} from '../../../application/usecases/TypeSiteUseCases';
 import { z } from 'zod';
 import { NotFoundError } from '../../../domain/errors/AppError';
 
-const siteTypeSchema = z.object({
+const typeSiteSchema = z.object({
     name: z.string().min(1)
 });
 
-export class SiteTypeController {
+export class TypeSiteController {
     static async create(req: Request, res: Response, next: NextFunction) {
         try {
-            const data = siteTypeSchema.parse((req as any).body);
-            const repo = new PrismaSiteTypeRepository();
-            const useCase = new CreateSiteTypeUseCase(repo);
+            const data = typeSiteSchema.parse((req as any).body);
+            const repo = new PrismaTypeSiteRepository();
+            const useCase = new CreateTypeSiteUseCase(repo);
             const result = await useCase.execute(data);
             return (res as any).status(201).json(result);
         } catch (error) {
@@ -30,12 +30,12 @@ export class SiteTypeController {
 
     static async getAll(req: Request, res: Response, next: NextFunction) {
         try {
-            const page = Number((req as any).query.page) || 1;
-            const size = Number((req as any).query.size) || 10;
+            const skip = Number((req as any).query.skip) || 0;
+            const take = Number((req as any).query.take) || 20;
             
-            const repo = new PrismaSiteTypeRepository();
-            const useCase = new GetAllSiteTypesUseCase(repo);
-            const result = await useCase.execute({ page, size });
+            const repo = new PrismaTypeSiteRepository();
+            const useCase = new GetAllTypeSitesUseCase(repo);
+            const result = await useCase.execute(skip, take);
             return (res as any).json(result);
         } catch (error) {
             // Fix: Type 'NextFunction' has no call signatures.
@@ -45,10 +45,10 @@ export class SiteTypeController {
 
     static async getById(req: Request, res: Response, next: NextFunction) {
         try {
-            const repo = new PrismaSiteTypeRepository();
-            const useCase = new GetSiteTypeByIdUseCase(repo);
+            const repo = new PrismaTypeSiteRepository();
+            const useCase = new GetTypeSiteByIdUseCase(repo);
             const result = await useCase.execute((req as any).params.id);
-            if (!result) throw new NotFoundError('SiteType not found');
+            if (!result) throw new NotFoundError('TypeSite not found');
             return (res as any).json(result);
         } catch (error) {
             // Fix: Type 'NextFunction' has no call signatures.
@@ -58,9 +58,9 @@ export class SiteTypeController {
 
     static async update(req: Request, res: Response, next: NextFunction) {
         try {
-            const data = siteTypeSchema.partial().parse((req as any).body);
-            const repo = new PrismaSiteTypeRepository();
-            const useCase = new UpdateSiteTypeUseCase(repo);
+            const data = typeSiteSchema.partial().parse((req as any).body);
+            const repo = new PrismaTypeSiteRepository();
+            const useCase = new UpdateTypeSiteUseCase(repo);
             const result = await useCase.execute((req as any).params.id, data);
             return (res as any).json(result);
         } catch (error) {
@@ -71,8 +71,8 @@ export class SiteTypeController {
 
     static async delete(req: Request, res: Response, next: NextFunction) {
         try {
-            const repo = new PrismaSiteTypeRepository();
-            const useCase = new DeleteSiteTypeUseCase(repo);
+            const repo = new PrismaTypeSiteRepository();
+            const useCase = new DeleteTypeSiteUseCase(repo);
             await useCase.execute((req as any).params.id);
             return (res as any).status(204).send();
         } catch (error) {

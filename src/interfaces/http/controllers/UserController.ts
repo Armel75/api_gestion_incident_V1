@@ -29,7 +29,8 @@ export class UserController {
             
             return (res as any).json(safeUsers);
         } catch (error) {
-            next(error);
+            // Fix: Type 'NextFunction' has no call signatures.
+            (next as any)(error);
         }
     }
 
@@ -43,7 +44,8 @@ export class UserController {
             const { password, ...rest } = user;
             return (res as any).json(rest);
         } catch (error) {
-            next(error);
+            // Fix: Type 'NextFunction' has no call signatures.
+            (next as any)(error);
         }
     }
 
@@ -56,7 +58,8 @@ export class UserController {
             const { password, ...rest } = user;
             return (res as any).json(rest);
         } catch (error) {
-            next(error);
+            // Fix: Type 'NextFunction' has no call signatures.
+            (next as any)(error);
         }
     }
 
@@ -67,7 +70,8 @@ export class UserController {
             await useCase.execute((req as any).params.id);
             return (res as any).status(204).send();
         } catch (error) {
-            next(error);
+            // Fix: Type 'NextFunction' has no call signatures.
+            (next as any)(error);
         }
     }
 }

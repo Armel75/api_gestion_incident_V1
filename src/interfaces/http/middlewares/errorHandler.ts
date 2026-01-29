@@ -36,7 +36,8 @@ export const errorHandler = (err: Error, req: Request, res: Response, next: Next
       status: 'error',
       code: 'VALIDATION_ERROR',
       message: 'Validation failed',
-      details: err.issues,
+      // Fix: Property 'issues' does not exist on type 'Error'.
+      details: (err as ZodError).issues,
       correlationId
     });
   }

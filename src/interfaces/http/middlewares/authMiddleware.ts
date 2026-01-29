@@ -66,7 +66,8 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       permissions: Array.from(new Set(permissions)) // Dedup
     };
 
-    next();
+    // Fix: Type 'NextFunction' has no call signatures.
+    (next as any)();
   } catch (err) {
     return (res as any).status(403).json({ message: 'Forbidden: Invalid Token' });
   }
@@ -82,6 +83,7 @@ export const requirePermission = (permission: string) => {
       return (res as any).status(403).json({ message: `Forbidden: Missing permission ${permission}` });
     }
 
-    next();
+    // Fix: Type 'NextFunction' has no call signatures.
+    (next as any)();
   };
 };
