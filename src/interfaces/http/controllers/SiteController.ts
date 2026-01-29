@@ -11,8 +11,7 @@ import { z } from 'zod';
 import { NotFoundError } from '../../../domain/errors/AppError';
 
 const createSiteSchema = z.object({
-  name: z.string().min(2),
-  typeId: z.string().uuid()
+  name: z.string().min(2)
 });
 
 export class SiteController {

@@ -6,10 +6,8 @@ export class PrismaSiteRepository implements ISiteRepository {
   async create(data: CreateSiteDTO): Promise<Site> {
     const site = await prisma.site.create({
       data: {
-        name: data.name,
-        typeId: data.typeId
-      },
-      include: { type: true }
+        name: data.name
+      }
     });
     return site as unknown as Site;
   }
@@ -18,16 +16,14 @@ export class PrismaSiteRepository implements ISiteRepository {
     const sites = await prisma.site.findMany({
       skip,
       take,
-      where: { deletedAt: null },
-      include: { type: true }
+      where: { deletedAt: null }
     });
     return sites as unknown as Site[];
   }
 
   async findById(id: string): Promise<Site | null> {
     const site = await prisma.site.findFirst({
-      where: { id, deletedAt: null },
-      include: { type: true }
+      where: { id, deletedAt: null }
     });
     return site as unknown as Site;
   }
@@ -36,10 +32,8 @@ export class PrismaSiteRepository implements ISiteRepository {
     const site = await prisma.site.update({
       where: { id },
       data: {
-        name: data.name,
-        typeId: data.typeId
-      },
-      include: { type: true }
+        name: data.name
+      }
     });
     return site as unknown as Site;
   }
