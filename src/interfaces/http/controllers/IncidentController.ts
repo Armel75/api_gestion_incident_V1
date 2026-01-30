@@ -13,10 +13,14 @@ import { NotFoundError } from '../../../domain/errors/AppError';
 const incidentSchema = z.object({
   title: z.string().min(3),
   description: z.string().optional(),
-  siteId: z.string().uuid(),
+  siteIds: z.array(z.string().uuid()).min(1),
   subProcessId: z.string().uuid(),
   subCategoryId: z.string().uuid(),
-  reporterId: z.string().optional() // Usually set by auth
+  assignedUserIds: z.array(z.string().uuid()).optional(),
+  attachments: z.array(z.object({
+    fileName: z.string(),
+    url: z.string().url()
+  })).optional()
 });
 
 export class IncidentController {
@@ -26,12 +30,10 @@ export class IncidentController {
       const validatedData = incidentSchema.parse((req as any).body);
       const repo = new PrismaIncidentRepository();
       const useCase = new CreateIncidentUseCase(repo);
-      const reporterId = (req as any).user.id;
       const userId = (req as any).user.id;
 
       const incident = await useCase.execute({
           ...validatedData,
-          reporterId,
           userId
       });
 
@@ -54,7 +56,7 @@ export class IncidentController {
         // Basic filtering
         const filters: any = {};
         if ((req as any).query.status) filters.status = (req as any).query.status;
-        if ((req as any).query.reporterId) filters.reporterId = (req as any).query.reporterId;
+        if ((req as any).query.userId) filters.userId = (req as any).query.userId;
 
         const incidents = await useCase.execute({ page, size, filters, sortBy, sortOrder });
         return (res as any).json(incidents);

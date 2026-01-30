@@ -19,14 +19,13 @@ describe('CreateIncidentUseCase', () => {
     const input = {
       title: 'Server Down',
       description: 'Critical failure',
-      reporterId: 'user-1',
       userId: 'user-1',
-      siteId: 'site-1',
+      siteIds: ['site-1'],
       subProcessId: 'proc-1',
       subCategoryId: 'cat-1'
     };
 
-    const expectedResult = { id: 'inc-1', ...input, status: 'OPEN', createdAt: new Date(), updatedAt: new Date() } as Incident;
+    const expectedResult = { id: 'inc-1', ...input, status: 'OPEN', createdAt: new Date(), updatedAt: new Date() } as unknown as Incident;
 
     (mockRepo.create as any).mockResolvedValue(expectedResult);
 
@@ -41,9 +40,8 @@ describe('CreateIncidentUseCase', () => {
     const input = {
         title: '',
         description: 'No title',
-        reporterId: 'user-1',
         userId: 'user-1',
-        siteId: 'site-1',
+        siteIds: ['site-1'],
         subProcessId: 'proc-1',
         subCategoryId: 'cat-1'
       };
