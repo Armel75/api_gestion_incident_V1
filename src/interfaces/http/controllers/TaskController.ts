@@ -11,7 +11,8 @@ import { z } from 'zod';
 
 const taskSchema = z.object({
     name: z.string().min(1),
-    description: z.string().optional()
+    description: z.string().optional(),
+    incidentId: z.string().uuid()
 });
 
 export class TaskController {

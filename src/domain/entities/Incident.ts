@@ -1,3 +1,5 @@
+import { Task } from './Task';
+
 export interface Incident {
   id: string;
   title: string;
@@ -8,10 +10,11 @@ export interface Incident {
   siteId: string;
   subProcessId: string;
   subCategoryId: string;
+  tasks?: Task[];
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date | null;
 }
 
-export type CreateIncidentDTO = Omit<Incident, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'deletedAt'>;
-export type UpdateIncidentDTO = Partial<Omit<Incident, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>>;
+export type CreateIncidentDTO = Omit<Incident, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'deletedAt' | 'tasks'>;
+export type UpdateIncidentDTO = Partial<Omit<Incident, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'tasks'>>;

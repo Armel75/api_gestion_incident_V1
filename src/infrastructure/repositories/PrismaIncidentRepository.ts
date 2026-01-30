@@ -15,7 +15,8 @@ export class PrismaIncidentRepository implements IIncidentRepository {
 
   async findById(id: string): Promise<Incident | null> {
     const incident = await prisma.incident.findFirst({
-      where: { id, deletedAt: null }
+      where: { id, deletedAt: null },
+      include: { tasks: true }
     });
     return incident as unknown as Incident;
   }
@@ -25,7 +26,8 @@ export class PrismaIncidentRepository implements IIncidentRepository {
       skip,
       take,
       where: { ...where, deletedAt: null },
-      orderBy
+      orderBy,
+      include: { tasks: true }
     });
     return incidents as unknown as Incident[];
   }
