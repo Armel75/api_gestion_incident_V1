@@ -11,7 +11,7 @@ export interface AuthRequest extends Request {
   };
 }
 
-const SECRET_KEY = process.env.JWT_SECRET || 'supersecret';
+const SECRET_KEY = process.env.JWT_SECRET || 'access_secret';
 
 // Authenticate Token
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
