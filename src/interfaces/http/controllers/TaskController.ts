@@ -12,7 +12,11 @@ import { z } from 'zod';
 const taskSchema = z.object({
     name: z.string().min(1),
     description: z.string().optional(),
-    incidentId: z.string().uuid()
+    incidentId: z.string().uuid(),
+    attachments: z.array(z.object({
+        fileName: z.string(),
+        url: z.string().url()
+    })).optional()
 });
 
 export class TaskController {
