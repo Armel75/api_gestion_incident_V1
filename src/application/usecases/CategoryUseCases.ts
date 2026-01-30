@@ -1,9 +1,9 @@
 import { ICategoryRepository } from '../../domain/repositories/ICategoryRepository';
-import { Category } from '../../domain/entities/Category';
+import { Category, CreateCategoryDTO } from '../../domain/entities/Category';
 
 export class CreateCategoryUseCase {
   constructor(private repo: ICategoryRepository) {}
-  async execute(data: Pick<Category, 'name'>): Promise<Category> {
+  async execute(data: CreateCategoryDTO): Promise<Category> {
     return this.repo.create(data);
   }
 }

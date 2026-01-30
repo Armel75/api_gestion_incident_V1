@@ -4,6 +4,7 @@ export interface Incident {
   description?: string | null;
   status: 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
   reporterId: string;
+  userId: string;
   siteId: string;
   subProcessId: string;
   subCategoryId: string;

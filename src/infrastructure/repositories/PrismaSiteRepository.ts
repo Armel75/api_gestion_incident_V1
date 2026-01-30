@@ -6,7 +6,8 @@ export class PrismaSiteRepository implements ISiteRepository {
   async create(data: CreateSiteDTO): Promise<Site> {
     const site = await prisma.site.create({
       data: {
-        name: data.name
+        name: data.name,
+        userId: data.userId
       }
     });
     return site as unknown as Site;

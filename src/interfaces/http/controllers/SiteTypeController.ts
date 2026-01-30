@@ -18,9 +18,10 @@ export class SiteTypeController {
     static async create(req: Request, res: Response, next: NextFunction) {
         try {
             const data = siteTypeSchema.parse((req as any).body);
+            const userId = (req as any).user.id;
             const repo = new PrismaSiteTypeRepository();
             const useCase = new CreateSiteTypeUseCase(repo);
-            const result = await useCase.execute(data);
+            const result = await useCase.execute({ ...data, userId });
             return (res as any).status(201).json(result);
         } catch (error) {
             // Fix: Type 'NextFunction' has no call signatures.

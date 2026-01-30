@@ -17,9 +17,10 @@ export class CategoryController {
     static async create(req: Request, res: Response) {
         try {
             const data = categorySchema.parse((req as any).body);
+            const userId = (req as any).user.id;
             const repo = new PrismaCategoryRepository();
             const useCase = new CreateCategoryUseCase(repo);
-            const result = await useCase.execute(data);
+            const result = await useCase.execute({ ...data, userId });
             return (res as any).status(201).json(result);
         } catch (error: any) {
             return (res as any).status(400).json({ error: error.message });

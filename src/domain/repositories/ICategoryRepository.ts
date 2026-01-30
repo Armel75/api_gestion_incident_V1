@@ -1,7 +1,7 @@
-import { Category } from '../entities/Category';
+import { Category, CreateCategoryDTO } from '../entities/Category';
 
 export interface ICategoryRepository {
-  create(data: Pick<Category, 'name'>): Promise<Category>;
+  create(data: CreateCategoryDTO): Promise<Category>;
   findById(id: string): Promise<Category | null>;
   findAll(skip?: number, take?: number): Promise<Category[]>;
   update(id: string, data: Partial<Category>): Promise<Category>;

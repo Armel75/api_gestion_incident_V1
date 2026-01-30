@@ -2,8 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { 
     CreateIncidentUseCase, 
     GetAllIncidentsUseCase, 
-    GetIncidentByIdUseCase,
-    UpdateIncidentUseCase,
+    GetIncidentByIdUseCase, 
+    UpdateIncidentUseCase, 
     DeleteIncidentUseCase
 } from '../../../application/usecases/IncidentUseCases';
 import { PrismaIncidentRepository } from '../../../infrastructure/repositories/PrismaIncidentRepository';
@@ -27,10 +27,12 @@ export class IncidentController {
       const repo = new PrismaIncidentRepository();
       const useCase = new CreateIncidentUseCase(repo);
       const reporterId = (req as any).user.id;
+      const userId = (req as any).user.id;
 
       const incident = await useCase.execute({
           ...validatedData,
-          reporterId
+          reporterId,
+          userId
       });
 
       return (res as any).status(201).json(incident);

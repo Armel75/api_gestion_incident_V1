@@ -20,6 +20,7 @@ describe('CreateIncidentUseCase', () => {
       title: 'Server Down',
       description: 'Critical failure',
       reporterId: 'user-1',
+      userId: 'user-1',
       siteId: 'site-1',
       subProcessId: 'proc-1',
       subCategoryId: 'cat-1'
@@ -41,6 +42,7 @@ describe('CreateIncidentUseCase', () => {
         title: '',
         description: 'No title',
         reporterId: 'user-1',
+        userId: 'user-1',
         siteId: 'site-1',
         subProcessId: 'proc-1',
         subCategoryId: 'cat-1'

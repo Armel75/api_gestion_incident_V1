@@ -7,10 +7,11 @@ export interface SubProcess {
 export interface Process {
   id: string;
   name: string;
+  userId: string;
   subProcesses?: SubProcess[];
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date | null;
 }
 
-export type CreateProcessDTO = Pick<Process, 'name'>;
+export type CreateProcessDTO = Pick<Process, 'name' | 'userId'>;
