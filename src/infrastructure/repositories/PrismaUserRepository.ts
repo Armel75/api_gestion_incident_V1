@@ -15,8 +15,12 @@ export class PrismaUserRepository implements IUserRepository {
   }
 
   async findByUsername(username: string): Promise<User | null> {
-    const user = await prisma.user.findUnique({
-      where: { username },
+    // Changed to findFirst to support soft delete filtering
+    const user = await prisma.user.findFirst({
+      where: { 
+        username,
+        deletedAt: null
+      },
       include: { 
         roles: {
           include: {
@@ -34,7 +38,6 @@ export class PrismaUserRepository implements IUserRepository {
       }
     });
     
-    // Transformation des données pour aplatir la structure Prisma (UserRole -> Role)
     if (!user) return null;
 
     const flatUser = {
@@ -49,8 +52,12 @@ export class PrismaUserRepository implements IUserRepository {
   }
 
   async findById(id: string): Promise<User | null> {
-    const user = await prisma.user.findUnique({
-      where: { id },
+    // Changed to findFirst to support soft delete filtering
+    const user = await prisma.user.findFirst({
+      where: { 
+        id, 
+        deletedAt: null 
+      },
       include: { 
         roles: {
             include: {
@@ -85,6 +92,7 @@ export class PrismaUserRepository implements IUserRepository {
     const users = await prisma.user.findMany({
       skip,
       take,
+      where: { deletedAt: null },
       include: { 
           roles: {
               include: { role: true }
@@ -110,6 +118,10 @@ export class PrismaUserRepository implements IUserRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await prisma.user.delete({ where: { id } });
+    // Soft delete implementation
+    await prisma.user.update({ 
+      where: { id },
+      data: { deletedAt: new Date() }
+    });
   }
 }

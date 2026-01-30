@@ -10,6 +10,8 @@ import userRoutes from './interfaces/http/routes/userRoutes';
 import taskRoutes from './interfaces/http/routes/taskRoutes';
 import processRoutes from './interfaces/http/routes/processRoutes';
 import categoryRoutes from './interfaces/http/routes/categoryRoutes';
+import subCategoryRoutes from './interfaces/http/routes/subCategoryRoutes';
+import subProcessRoutes from './interfaces/http/routes/subProcessRoutes';
 import { errorHandler } from './interfaces/http/middlewares/errorHandler';
 import { correlationMiddleware } from './interfaces/http/middlewares/correlationMiddleware';
 import { requestLogger, auditLogger } from './interfaces/http/middlewares/loggingMiddleware';
@@ -56,6 +58,8 @@ app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/tasks', taskRoutes);
 app.use('/api/v1/processes', processRoutes);
 app.use('/api/v1/categories', categoryRoutes);
+app.use('/api/v1/sub-categories', subCategoryRoutes);
+app.use('/api/v1/sub-processes', subProcessRoutes);
 
 // 404 Handler - Forward to error handler
 app.use((req, res, next) => {

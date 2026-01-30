@@ -6,6 +6,7 @@ export interface User {
   roles?: string[];
   createdAt: Date;
   updatedAt: Date;
+  deletedAt?: Date | null;
 }
 
 export type RegisterUserDTO = Pick<User, 'username' | 'password'>;
