@@ -1,5 +1,6 @@
 import { ITaskRepository } from '../../domain/repositories/ITaskRepository';
 import { Task, CreateTaskDTO } from '../../domain/entities/Task';
+import { CreateAttachmentDTO } from '../../domain/entities/Attachment';
 
 export class CreateTaskUseCase {
   constructor(private repo: ITaskRepository) {}
@@ -24,7 +25,7 @@ export class GetTaskByIdUseCase {
 
 export class UpdateTaskUseCase {
   constructor(private repo: ITaskRepository) {}
-  async execute(id: string, data: Partial<Task>): Promise<Task> {
+  async execute(id: string, data: Omit<Partial<Task>, 'attachments'> & { attachments?: CreateAttachmentDTO[] }): Promise<Task> {
     return this.repo.update(id, data);
   }
 }

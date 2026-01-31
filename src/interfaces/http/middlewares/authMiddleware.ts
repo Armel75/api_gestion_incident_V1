@@ -11,13 +11,18 @@ export interface AuthRequest extends Request {
   };
 }
 
-const SECRET_KEY = process.env.JWT_SECRET || 'access_secret';
-
 // Authenticate Token
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
-  // Use headers directly as req.header might not be typed correctly in this environment
-  const authHeader = (req as any).headers['authorization']; 
-  const token = typeof authHeader === 'string' && authHeader.split(' ')[1];
+  // Read secret at runtime to ensure dotenv is loaded
+  const SECRET_KEY = process.env.JWT_SECRET || 'access_secret';
+
+  // Extract token from Authorization header (Bearer scheme)
+  const authHeader = (req as any).headers.authorization;
+  let token = null;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  }
 
   if (!token) return (res as any).status(401).json({ message: 'Unauthorized' });
 

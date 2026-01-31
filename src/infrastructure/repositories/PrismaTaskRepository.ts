@@ -1,5 +1,6 @@
 import { ITaskRepository } from '../../domain/repositories/ITaskRepository';
 import { Task, CreateTaskDTO } from '../../domain/entities/Task';
+import { CreateAttachmentDTO } from '../../domain/entities/Attachment';
 import prisma from '../database/prisma';
 
 export class PrismaTaskRepository implements ITaskRepository {
@@ -41,7 +42,7 @@ export class PrismaTaskRepository implements ITaskRepository {
     return tasks as unknown as Task[];
   }
 
-  async update(id: string, data: Partial<Task> & { attachments?: any[] }): Promise<Task> {
+  async update(id: string, data: Omit<Partial<Task>, 'attachments'> & { attachments?: CreateAttachmentDTO[] }): Promise<Task> {
     const { attachments, ...rest } = data;
 
     const updateData: any = { ...rest };

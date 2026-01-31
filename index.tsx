@@ -2,40 +2,120 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { createRoot } from 'react-dom/client';
 
 // 1. Auth Context for managing global session state
+interface User {
+  id: string;
+  username: string;
+  roles: string[];
+  permissions: string[];
+}
+
 interface AuthContextType {
-  token: string | null;
-  login: (accessToken: string, refreshToken: string) => void;
+  user: User | null;
+  isLoading: boolean;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 const AuthProvider = ({ children }: { children?: React.ReactNode }) => {
-  // Initialize state from localStorage to persist session across refreshes
-  const [token, setToken] = useState<string | null>(() => {
-    return localStorage.getItem('accessToken');
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
+  // Hydrate session on mount using localStorage token
   useEffect(() => {
-    // Sync state with storage (optional safety check)
-    const stored = localStorage.getItem('accessToken');
-    if (stored) setToken(stored);
+    const checkSession = async () => {
+      const token = localStorage.getItem('accessToken');
+      
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        // Must explicitly attach Authorization header
+        const res = await fetch('/api/v1/auth/me', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (res.ok) {
+          const userData = await res.json();
+          setUser(userData);
+        } else {
+          // If token is invalid (401), clear storage
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          setUser(null);
+        }
+      } catch (err) {
+        console.error('Session check failed', err);
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkSession();
   }, []);
 
-  const login = (accessToken: string, refreshToken: string) => {
-    localStorage.setItem('accessToken', accessToken);
-    localStorage.setItem('refreshToken', refreshToken);
-    setToken(accessToken);
+  const login = async (username: string, password: string) => {
+    const res = await fetch('/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    
+    if (!res.ok) throw new Error('Login failed');
+    
+    const data = await res.json();
+    
+    // Store tokens strictly in localStorage
+    if (data.accessToken) {
+        localStorage.setItem('accessToken', data.accessToken);
+    }
+    if (data.refreshToken) {
+        localStorage.setItem('refreshToken', data.refreshToken);
+    }
+    
+    // Fetch user details immediately using new token
+    const meRes = await fetch('/api/v1/auth/me', {
+        headers: {
+            'Authorization': `Bearer ${data.accessToken}`
+        }
+    });
+
+    if (meRes.ok) {
+        const userData = await meRes.json();
+        setUser(userData);
+    }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const refreshToken = localStorage.getItem('refreshToken');
+    try {
+        if (refreshToken) {
+            await fetch('/api/v1/auth/logout', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refreshToken })
+            });
+        }
+    } catch(e) {
+        console.error(e);
+    }
+    // Always clear local state
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
-    setToken(null);
+    setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ token, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -57,17 +137,7 @@ const Login = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      // Assuming backend runs on same origin or proxied
-      const res = await fetch('/api/v1/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      
-      if (!res.ok) throw new Error('Login failed');
-      
-      const data = await res.json();
-      login(data.accessToken, data.refreshToken);
+      await login(username, password);
     } catch (err: any) {
       setError(err.message);
     }
@@ -94,23 +164,35 @@ const Login = () => {
 
 // 3. Example Protected Component
 const Dashboard = () => {
-  const { token, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [data, setData] = useState<any>(null);
 
   useEffect(() => {
-    // Demonstrate using the token for requests
+    const token = localStorage.getItem('accessToken');
+    
+    // Manually inject Authorization header for authenticated requests
     fetch('/api/v1/incidents', {
-      headers: { 'Authorization': `Bearer ${token}` }
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
     })
-    .then(res => res.json())
-    .then(data => setData(data))
+    .then(res => {
+        if (res.status === 401) {
+            logout(); // Auto logout on invalid token
+            return null;
+        }
+        return res.json();
+    })
+    .then(data => {
+        if(data) setData(data);
+    })
     .catch(err => console.error(err));
-  }, [token]);
+  }, []);
 
   return (
     <div style={{ padding: '20px' }}>
       <h1>Dashboard</h1>
-      <p>Welcome! You are logged in.</p>
+      <p>Welcome, {user?.username}! You are logged in.</p>
       <button onClick={logout}>Logout</button>
       <pre>{JSON.stringify(data, null, 2)}</pre>
     </div>
@@ -119,8 +201,11 @@ const Dashboard = () => {
 
 // 4. Main App Switcher
 const App = () => {
-  const { token } = useAuth();
-  return token ? <Dashboard /> : <Login />;
+  const { user, isLoading } = useAuth();
+  
+  if (isLoading) return <div>Loading session...</div>;
+
+  return user ? <Dashboard /> : <Login />;
 };
 
 // 5. Bootstrap
