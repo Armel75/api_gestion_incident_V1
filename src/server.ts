@@ -35,7 +35,7 @@ const corsOptions = {
 app.use(cors(corsOptions) as any);
 
 // 3. Global Rate Limiter (Prevent DoS)
-app.use(globalLimiter);
+app.use(globalLimiter as any);
 
 // 4. Infrastructure Middlewares
 app.use(correlationMiddleware); // Must be before logger to attach ID

@@ -44,13 +44,13 @@ export class RefreshTokenUseCase {
     }
 
     // 5. ROTATION LOGIC
-    // Generate new tokens
+    // Generate new tokens with consistent duration (8h / 30d)
     const payload = { id: user.id, username: user.username };
-    const newAccessToken = jwt.sign(payload, ACCESS_SECRET, { expiresIn: '15m' });
-    const newRefreshToken = jwt.sign(payload, REFRESH_SECRET, { expiresIn: '7d' });
+    const newAccessToken = jwt.sign(payload, ACCESS_SECRET, { expiresIn: '8h' });
+    const newRefreshToken = jwt.sign(payload, REFRESH_SECRET, { expiresIn: '30d' });
 
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
+    expiresAt.setDate(expiresAt.getDate() + 30);
 
     // Save new token
     await this.refreshTokenRepository.create({

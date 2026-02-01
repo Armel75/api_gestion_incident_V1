@@ -7,7 +7,7 @@ const router = Router();
 
 router.post('/register', AuthController.register);
 // Protection brute-force spécifiquement sur le login
-router.post('/login', authLimiter, AuthController.login);
+router.post('/login', authLimiter as any, AuthController.login);
 router.post('/refresh', AuthController.refresh);
 router.post('/logout', AuthController.logout);
 // Session rehydration endpoint

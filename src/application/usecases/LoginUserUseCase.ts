@@ -37,15 +37,17 @@ export class LoginUserUseCase {
       username: user.username
     };
 
-    // 1. Generate Access Token (15 min)
-    const accessToken = jwt.sign(payload, ACCESS_SECRET, { expiresIn: '15m' });
+    // 1. Generate Access Token (8 hours - work day session)
+    // Prevents "Invalid Token" errors during normal usage without forcing constant refresh
+    const accessToken = jwt.sign(payload, ACCESS_SECRET, { expiresIn: '8h' });
 
-    // 2. Generate Refresh Token (7 days)
-    const refreshToken = jwt.sign(payload, REFRESH_SECRET, { expiresIn: '7d' });
+    // 2. Generate Refresh Token (30 days)
+    // Extended duration for long-term sessions
+    const refreshToken = jwt.sign(payload, REFRESH_SECRET, { expiresIn: '30d' });
 
     // 3. Persist Refresh Token
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
+    expiresAt.setDate(expiresAt.getDate() + 30);
 
     await this.refreshTokenRepository.create({
       token: refreshToken,
