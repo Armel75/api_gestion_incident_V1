@@ -33,6 +33,7 @@ import glpiTicketRoutes from './interfaces/http/routes/glpiTicketRoutes';
 import incidentCommentRoutes from './interfaces/http/routes/incidentCommentRoutes';
 import reportRoutes from './interfaces/http/routes/reportRoutes';
 import { startGlpiSyncCron } from './cron/glpiSync.cron';
+import { startReportEmailCron } from './cron/reportEmail.cron';
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -126,6 +127,11 @@ app.use(errorHandler as any);
 // 7. CRON GLPI SYNC
 // --------------------------------------------------
 startGlpiSyncCron();
+
+// --------------------------------------------------
+// 8. CRON ENVOI RAPPORTS EMAIL (hebdo lundi 7h / mensuel 1er 7h)
+// --------------------------------------------------
+startReportEmailCron();
 
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);

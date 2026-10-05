@@ -12,8 +12,8 @@ export class GetUserUseCase {
 export class GetAllUsersUseCase {
   constructor(private repo: IUserRepository) {}
 
-  async execute(skip: number, take: number): Promise<User[]> {
-    return this.repo.findAll(skip, take);
+  async execute(skip?: number, take?: number, search?: string): Promise<User[]> {
+    return this.repo.findAll(skip, take, search);
   }
 }
 

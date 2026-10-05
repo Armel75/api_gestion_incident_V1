@@ -417,6 +417,11 @@ export class IncidentController {
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#039;");
 
+      // Texte libre multi-lignes : échappe le HTML PUIS convertit les retours
+      // à la ligne en <br/> pour préserver les paragraphes à l'impression.
+      const escapeMultiline = (s: any) =>
+        escapeHtml(s).replace(/\r\n|\r|\n/g, "<br/>");
+
       const receiverSites =
         Array.isArray(incident.sites) && incident.sites.length
           ? incident.sites.map((s: any) => s?.name ?? s?.site?.name).filter(Boolean).join(", ")
@@ -487,12 +492,12 @@ export class IncidentController {
         .replace("{{priority}}", escapeHtml(incident.urgency ?? "—"))
         .replace("{{category}}", escapeHtml(incident.category ?? "—"))
         .replace("{{process}}", escapeHtml(incident.processDomain ?? "—"))
-        .replace("{{cause}}", escapeHtml(incident.subCategory ?? "—"))
-        .replace("{{description}}", escapeHtml(incident.description ?? "—"))
-        .replace("{{rootCause}}", escapeHtml(incident.rootCause ?? "—"))
-        .replace("{{proposedSolution}}", escapeHtml(incident.proposedSolution ?? "—"))
+        .replace("{{cause}}", escapeMultiline(incident.subCategory ?? "—"))
+        .replace("{{description}}", escapeMultiline(incident.description ?? "—"))
+        .replace("{{rootCause}}", escapeMultiline(incident.rootCause ?? "—"))
+        .replace("{{proposedSolution}}", escapeMultiline(incident.proposedSolution ?? "—"))
         .replace("{{personnes}}", personnesList)
-        .replace("{{scope}}", escapeHtml(incident.scope ?? "—"))
+        .replace("{{scope}}", escapeMultiline(incident.scope ?? "—"))
         .replace("{{tasks}}", tasksHtml)
         .replace("{{actions}}", "—")
         .replace("{{proposal}}", "—")
@@ -900,6 +905,11 @@ export class IncidentController {
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#039;");
 
+      // Texte libre multi-lignes : échappe le HTML PUIS convertit les retours
+      // à la ligne en <br/> pour préserver les paragraphes à l'impression.
+      const escapeMultiline = (s: any) =>
+        escapeHtml(s).replace(/\r\n|\r|\n/g, "<br/>");
+
       const rows = Array.isArray(result.data) ? result.data : [];
 
       const rowsHtml = rows
@@ -922,9 +932,9 @@ export class IncidentController {
             <tr>
               <td>${escapeHtml(inc.reference)}</td>
               <td>${escapeHtml(glpiTicketNumber)}</td>
-              <td>${escapeHtml(inc.description)}</td>
-              <td>${escapeHtml(inc.rootCause ?? "—")}</td>
-              <td>${escapeHtml(inc.proposedSolution ?? "—")}</td>
+              <td>${escapeMultiline(inc.description)}</td>
+              <td>${escapeMultiline(inc.rootCause ?? "—")}</td>
+              <td>${escapeMultiline(inc.proposedSolution ?? "—")}</td>
               <td>${escapeHtml(inc.status)}</td>
               <td>${escapeHtml(inc.urgency)}</td>
               <td>${escapeHtml(inc.serviceEmitter ?? "—")}</td>

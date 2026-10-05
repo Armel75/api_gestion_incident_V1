@@ -42,10 +42,13 @@ export class UserController {
       const repo = new PrismaUserRepository();
       const useCase = new GetAllUsersUseCase(repo);
 
-      const skip = Number(req.query.skip) || 0;
-      const take = Number(req.query.take) || 20;
+      const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+      // En recherche : on retourne tous les résultats (pas de limite de page),
+      // pour que le champ couvre bien toute la table.
+      const skip = search ? undefined : (Number(req.query.skip) || 0);
+      const take = search ? undefined : (Number(req.query.take) || 20);
 
-      const users = await useCase.execute(skip, take);
+      const users = await useCase.execute(skip, take, search || undefined);
 
       const safeUsers = users.map(({ password, ...rest }) => rest);
 

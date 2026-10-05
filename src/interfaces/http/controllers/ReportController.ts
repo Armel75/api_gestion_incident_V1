@@ -1,10 +1,22 @@
 import { Request, Response } from 'express';
 import { WeeklyReportService } from '../../../services/WeeklyReportService';
+import { MonthlyReportService } from '../../../services/MonthlyReportService';
+import { QuarterlyReportService } from '../../../services/QuarterlyReportService';
+import { AnnualReportService } from '../../../services/AnnualReportService';
+import { SlaReportService } from '../../../services/SlaReportService';
 import { IncidentService } from '../../../services/IncidentService';
 import { IncidentPdfService } from '../../../domain/services/IncidentPdfService';
+import { buildReportWorkbook, ReportExcelOptions } from '../../../services/ReportExcelService';
+import { buildSlaWorkbook } from '../../../services/SlaReportExcel';
+import { respondPdfError } from '../utils/pdfExportError';
 import prisma from '../../../infrastructure/database/prisma';
 import path from 'path';
 import fs from 'fs/promises';
+
+const monthlyReportService = new MonthlyReportService();
+const quarterlyReportService = new QuarterlyReportService();
+const annualReportService = new AnnualReportService();
+const slaReportService = new SlaReportService();
 
 /* ------------------------------------------------------------------ */
 /*  Helpers rôles (copie depuis IncidentController)                    */
@@ -37,6 +49,22 @@ function escapeHtml(s: any): string {
 function formatDateFr(dateStr: string): string {
   const d = new Date(dateStr);
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** Résout une période { from, to, label } en bornes Date (fermeture fin de journée). */
+function resolveSlaRange(body: any): { start: Date; end: Date; label: string } | null {
+  const from = body?.from as string | undefined;
+  const to = body?.to as string | undefined;
+  if (!from || !to) return null;
+  const start = new Date(from);
+  const end = new Date(to);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  end.setHours(23, 59, 59, 999);
+  return {
+    start,
+    end,
+    label: (body?.label as string | undefined) || `${formatDateFr(from)} → ${formatDateFr(to)}`,
+  };
 }
 
 const reportService = new WeeklyReportService();
@@ -337,8 +365,7 @@ export class ReportController {
       res.setHeader('Content-Length', String(pdfBuffer.length));
       return res.status(200).send(pdfBuffer);
     } catch (error) {
-      console.error('[REPORT] exportPdf error:', error);
-      return res.status(500).json({ message: 'Erreur génération PDF' });
+      return respondPdfError(res, error, 'Erreur génération PDF');
     }
   }
 
@@ -377,66 +404,46 @@ export class ReportController {
         data = await reportService.getCurrentWeekReport(user);
       }
 
-      const sep = ';';
-      const quote = (v: any): string => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const options: ReportExcelOptions = {
+        sheetTitle: 'Rapport Hebdomadaire',
+        reportTitle: 'RAPPORT HEBDOMADAIRE',
+        periodLabel: data.period.label,
+        periodStart: data.period.startDate,
+        periodEnd: data.period.endDate,
+        kpi: data.kpi,
+        byService: data.byService,
+        byPriority: data.byPriority,
+        trendTitle: 'Tendance journalière',
+        trend: data.dailyTrend.map((d) => ({
+          label: d.dayLabel,
+          created: d.created,
+          resolved: d.resolved,
+        })),
+        comparison: data.comparison
+          ? {
+              previousLabel: 'S-1',
+              currentKpi: data.kpi,
+              previousKpi: data.comparison.previousWeek,
+              resolutionRateChange: data.comparison.resolutionRateChange,
+              createdChange: data.comparison.createdChange,
+              resolvedChange: data.comparison.resolvedChange,
+              backlogEndChange: data.comparison.backlogEndChange,
+              avgResolutionChange: data.comparison.avgResolutionChange,
+            }
+          : null,
+        incidents: data.incidents,
+      };
 
-      let csv = '';
+      const buffer = await buildReportWorkbook(options);
 
-      // ── En-tête ──
-      csv += `Rapport hebdomadaire;${quote(data.period.label)}\n`;
-      csv += `Période;${quote(data.period.startDate)};→;${quote(data.period.endDate)}\n\n`;
-
-      // ── KPIs ──
-      csv += 'Indicateur;Valeur\n';
-      csv += `Créés;${data.kpi.created}\n`;
-      csv += `Résolus;${data.kpi.resolved}\n`;
-      csv += `Taux de résolution;${data.kpi.resolutionRate !== null ? `${data.kpi.cappedRate.toFixed(1)}%` : 'N/A'}\n`;
-      if (data.kpi.extraResolvedFromStock > 0) {
-        csv += `Dont résolus d'anciens stocks;${data.kpi.extraResolvedFromStock}\n`;
-      }
-      csv += `Backlog début;${data.kpi.backlogStart}\n`;
-      csv += `Backlog fin;${data.kpi.backlogEnd}\n`;
-      csv += `Tps moyen résolution (h);${data.kpi.avgResolutionHours !== null ? data.kpi.avgResolutionHours.toFixed(2) : ''}\n`;
-      csv += `Tps moyen prise en charge (h);${data.kpi.avgTakeInChargeHours !== null ? data.kpi.avgTakeInChargeHours.toFixed(2) : ''}\n\n`;
-
-      // ── Par service ──
-      csv += 'Service;Créés;Résolus;Taux (%)\n';
-      for (const s of data.byService) {
-        csv += `${quote(s.name)};${s.created};${s.resolved};${s.rate !== null ? s.rate.toFixed(1) : ''}\n`;
-      }
-      csv += '\n';
-
-      // ── Par priorité ──
-      csv += 'Priorité;Créés;Résolus;Taux (%)\n';
-      for (const p of data.byPriority) {
-        csv += `${quote(p.name)};${p.created};${p.resolved};${p.rate !== null ? p.rate.toFixed(1) : ''}\n`;
-      }
-      csv += '\n';
-
-      // ── Trend journalier ──
-      csv += 'Jour;Créés;Résolus\n';
-      for (const d of data.dailyTrend) {
-        csv += `${quote(d.dayLabel)};${d.created};${d.resolved}\n`;
-      }
-      csv += '\n';
-
-      // ── Comparaison S-1 ──
-      if (data.comparison) {
-        csv += 'Comparaison S-1;S courante;S-1;Variation\n';
-        const c = data.comparison;
-        csv += `Créés;${data.kpi.created};${c.previousWeek.created};${c.createdChange !== null ? `${c.createdChange.toFixed(1)}%` : ''}\n`;
-        csv += `Résolus;${data.kpi.resolved};${c.previousWeek.resolved};${c.resolvedChange !== null ? `${c.resolvedChange.toFixed(1)}%` : ''}\n`;
-        csv += `Taux;${data.kpi.resolutionRate !== null ? `${data.kpi.cappedRate.toFixed(1)}%` : 'N/A'};${c.previousWeek.resolutionRate !== null ? `${c.previousWeek.cappedRate.toFixed(1)}%` : 'N/A'};${c.resolutionRateChange !== null ? `${c.resolutionRateChange.toFixed(1)} pts` : ''}\n`;
-        csv += `Backlog;${data.kpi.backlogEnd};${c.previousWeek.backlogEnd};${c.backlogEndChange !== null ? `${c.backlogEndChange.toFixed(1)}%` : ''}\n`;
-      }
-
-      const filename = `rapport_hebdo_${data.period.startDate}_${data.period.endDate}.csv`;
-
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      const filename = `rapport_hebdo_${data.period.startDate}_${data.period.endDate}.xlsx`;
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      // BOM pour Excel
-      res.setHeader('Content-Length', Buffer.byteLength('\uFEFF' + csv, 'utf8'));
-      return res.status(200).send('\uFEFF' + csv);
+      res.setHeader('Content-Length', String(buffer.length));
+      return res.status(200).send(buffer);
     } catch (error) {
       console.error('[REPORT] exportExcel error:', error);
       return res.status(500).json({ message: 'Erreur génération Excel' });
@@ -634,8 +641,7 @@ export class ReportController {
       res.setHeader('Content-Length', String(pdfBuffer.length));
       return res.status(200).send(pdfBuffer);
     } catch (error) {
-      console.error('[REPORT] exportStatisticsPdf error:', error);
-      return res.status(500).json({ message: 'Erreur génération PDF statistiques' });
+      return respondPdfError(res, error, 'Erreur génération PDF statistiques');
     }
   }
 
@@ -796,8 +802,1249 @@ export class ReportController {
       res.setHeader('Content-Length', String(pdfBuffer.length));
       return res.status(200).send(pdfBuffer);
     } catch (error) {
-      console.error('[REPORT] exportPilotagePdf error:', error);
-      return res.status(500).json({ message: 'Erreur génération PDF pilotage' });
+      return respondPdfError(res, error, 'Erreur génération PDF pilotage');
+    }
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────
+     MONTHLY REPORT METHODS
+  ───────────────────────────────────────────────────────────────────── */
+
+  /**
+   * GET /api/v1/reports/monthly/available-months
+   */
+  static async getAvailableMonths(req: Request, res: Response) {
+    try {
+      const authUser = (req as any).user;
+      if (!authUser?.id) return res.status(401).json({ message: 'Unauthorized' });
+
+      const dbUser = await prisma.user.findUnique({
+        where: { id: authUser.id },
+        include: { roles: { include: { role: true } } },
+      });
+      if (!dbUser) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+      const roles = dbUser.roles
+        .map((r) => r.role?.name)
+        .filter(Boolean)
+        .map((n: string) => n.toUpperCase());
+
+      const months = await monthlyReportService.getAvailableMonths({
+        id: dbUser.id,
+        roles,
+        siteId: dbUser.siteId ?? undefined,
+      });
+
+      return res.json(months);
+    } catch (error) {
+      console.error('[REPORT] getAvailableMonths error:', error);
+      return res.status(500).json({ message: 'Erreur récupération mois' });
+    }
+  }
+
+  /**
+   * GET /api/v1/reports/monthly?month=2026-09
+   * GET /api/v1/reports/monthly/current
+   */
+  static async getMonthlyReport(req: Request, res: Response) {
+    try {
+      const authUser = (req as any).user;
+      if (!authUser?.id) return res.status(401).json({ message: 'Unauthorized' });
+
+      const dbUser = await prisma.user.findUnique({
+        where: { id: authUser.id },
+        include: { roles: { include: { role: true } } },
+      });
+      if (!dbUser) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+      const roles = dbUser.roles
+        .map((r) => r.role?.name)
+        .filter(Boolean)
+        .map((n: string) => n.toUpperCase());
+
+      const user = { id: dbUser.id, roles, siteId: dbUser.siteId ?? undefined };
+
+      const monthParam = req.query.month as string | undefined;
+      let result;
+
+      if (monthParam) {
+        // Format: "2026-09"
+        const match = monthParam.match(/^(\d{4})-(\d{1,2})$/);
+        if (!match) {
+          return res.status(400).json({ message: 'Format de mois invalide. Utiliser YYYY-MM (ex: 2026-09)' });
+        }
+        const year = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10);
+        if (month < 1 || month > 12) {
+          return res.status(400).json({ message: 'Mois invalide (1-12)' });
+        }
+        result = await monthlyReportService.getMonthlyReport(month, year, user);
+      } else {
+        result = await monthlyReportService.getCurrentMonthReport(user);
+      }
+
+      return res.json(result);
+    } catch (error) {
+      console.error('[REPORT] getMonthlyReport error:', error);
+      return res.status(500).json({ message: 'Erreur récupération rapport mensuel' });
+    }
+  }
+
+  /**
+   * POST /api/v1/reports/monthly/export/pdf
+   * Body: { month?: "2026-09" }
+   */
+  static async exportMonthlyPdf(req: Request, res: Response) {
+    try {
+      const authUser = (req as any).user;
+      if (!authUser?.id) return res.status(401).json({ message: 'Unauthorized' });
+
+      const dbUser = await prisma.user.findUnique({
+        where: { id: authUser.id },
+        include: { roles: { include: { role: true } } },
+      });
+      if (!dbUser) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+      const roles = dbUser.roles
+        .map((r) => r.role?.name)
+        .filter(Boolean)
+        .map((n: string) => n.toUpperCase());
+
+      const user = { id: dbUser.id, roles, siteId: dbUser.siteId ?? undefined };
+
+      const monthParam = req.body?.month as string | undefined;
+      let data;
+
+      if (monthParam) {
+        const match = monthParam.match(/^(\d{4})-(\d{1,2})$/);
+        if (!match) {
+          return res.status(400).json({ message: 'Format de mois invalide' });
+        }
+        data = await monthlyReportService.getMonthlyReport(parseInt(match[2], 10), parseInt(match[1], 10), user);
+      } else {
+        data = await monthlyReportService.getCurrentMonthReport(user);
+      }
+
+      const TEMPLATE_DIR = path.resolve(__dirname, '../../../../templates');
+      const ASSETS_DIR = path.resolve(__dirname, '../../../../assets');
+
+      const templatePath = path.join(TEMPLATE_DIR, 'monthly-report.html');
+
+      let template: string;
+      try {
+        template = await fs.readFile(templatePath, 'utf8');
+      } catch {
+        return res.status(500).json({ message: 'Template de rapport mensuel introuvable' });
+      }
+
+      let logoBase64 = '';
+      try {
+        const logoBuffer = await fs.readFile(path.join(ASSETS_DIR, 'logo.png'));
+        logoBase64 = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+      } catch {
+        logoBase64 = '';
+      }
+
+      const barWidth = (rate: number | null): string => {
+        if (rate === null) return '0';
+        return String(Math.min(rate, 100));
+      };
+
+      const kpi = data.kpi;
+      const comparison = data.comparison;
+
+      const renderChange = (value: number | null, unit: string, inverse = false): string => {
+        if (value === null) return '<span class="neutral">—</span>';
+        const abs = Math.abs(value);
+        const formatted = unit === 'pts'
+          ? `${abs.toFixed(1)} pts`
+          : `${abs.toFixed(1)}%`;
+        if (Math.abs(value) < 0.01) return `<span class="neutral">→ ${formatted}</span>`;
+        const isPositive = inverse ? value < 0 : value > 0;
+        if (isPositive) {
+          return `<span class="good">▲ ${formatted}</span>`;
+        }
+        return `<span class="bad">▼ ${formatted}</span>`;
+      };
+
+      const displayRate = kpi.resolutionRate !== null ? `${kpi.cappedRate.toFixed(1)}%` : 'N/A';
+      const extraNote = kpi.extraResolvedFromStock > 0
+        ? `<p class="note">Dont ${kpi.extraResolvedFromStock} résolu(s) d'anciens stocks</p>`
+        : '';
+
+      const serviceRows = data.byService.length
+        ? data.byService.map((s) => `
+          <tr>
+            <td>${escapeHtml(s.name)}</td>
+            <td class="num">${s.created}</td>
+            <td class="num">${s.resolved}</td>
+            <td class="num">${s.rate !== null ? `${s.rate.toFixed(1)}%` : 'N/A'}
+              <div class="bar-bg"><div class="bar-fill" style="width:${barWidth(s.rate)}%"></div></div>
+            </td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" class="empty">Aucune donnée ce mois</td></tr>';
+
+      const priorityRows = data.byPriority.length
+        ? data.byPriority.map((p) => `
+          <tr>
+            <td>${escapeHtml(p.name)}</td>
+            <td class="num">${p.created}</td>
+            <td class="num">${p.resolved}</td>
+            <td class="num">${p.rate !== null ? `${p.rate.toFixed(1)}%` : 'N/A'}
+              <div class="bar-bg"><div class="bar-fill" style="width:${barWidth(p.rate)}%"></div></div>
+            </td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" class="empty">Aucune donnée ce mois</td></tr>';
+
+      const weeklyTrendRows = data.weeklyTrend.map((w) => `
+        <tr>
+          <td>${escapeHtml(w.weekLabel)}</td>
+          <td class="num">${w.created}</td>
+          <td class="num">${w.resolved}</td>
+          <td class="num">
+            <div class="mini-bar">
+              <div class="bar-created" style="width:${w.created > 0 ? Math.max(2, (w.created / Math.max(...data.weeklyTrend.map((x) => x.created), 1)) * 100) : 0}%"></div>
+              <div class="bar-resolved" style="width:${w.resolved > 0 ? Math.max(2, (w.resolved / Math.max(...data.weeklyTrend.map((x) => x.resolved), 1)) * 100) : 0}%"></div>
+            </div>
+          </td>
+        </tr>`).join('');
+
+      const comparisonRows = comparison
+        ? `
+        <tr>
+          <td>Créés</td>
+          <td class="num">${kpi.created}</td>
+          <td class="num">${comparison.previousMonth.created}</td>
+          <td class="num">${renderChange(comparison.createdChange, 'pct')}</td>
+        </tr>
+        <tr>
+          <td>Résolus</td>
+          <td class="num">${kpi.resolved}</td>
+          <td class="num">${comparison.previousMonth.resolved}</td>
+          <td class="num">${renderChange(comparison.resolvedChange, 'pct')}</td>
+        </tr>
+        <tr>
+          <td>Taux de résolution</td>
+          <td class="num">${displayRate}</td>
+          <td class="num">${comparison.previousMonth.resolutionRate !== null ? `${comparison.previousMonth.cappedRate.toFixed(1)}%` : 'N/A'}</td>
+          <td class="num">${renderChange(comparison.resolutionRateChange, 'pts')}</td>
+        </tr>
+        <tr>
+          <td>Incidents en cours (fin)</td>
+          <td class="num">${kpi.backlogEnd}</td>
+          <td class="num">${comparison.previousMonth.backlogEnd}</td>
+          <td class="num">${renderChange(comparison.backlogEndChange, 'pct', true)}</td>
+        </tr>
+        <tr>
+          <td>Tps moy. résolution</td>
+          <td class="num">${kpi.avgResolutionHours !== null ? `${kpi.avgResolutionHours.toFixed(1)} h` : '—'}</td>
+          <td class="num">${comparison.previousMonth.avgResolutionHours !== null ? `${comparison.previousMonth.avgResolutionHours.toFixed(1)} h` : '—'}</td>
+          <td class="num">${renderChange(comparison.avgResolutionChange, 'pct', true)}</td>
+        </tr>`
+        : '<tr><td colspan="4" class="empty">Mois précédent non disponible</td></tr>';
+
+      let html = template
+        .replace(/{{LOGO_URL}}/g, logoBase64)
+        .replace(/{{PERIOD_LABEL}}/g, escapeHtml(data.period.label))
+        .replace(/{{PERIOD_START}}/g, formatDateFr(data.period.startDate))
+        .replace(/{{PERIOD_END}}/g, formatDateFr(data.period.endDate))
+        .replace(/{{EXPORT_DATE}}/g, new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }))
+        .replace('{{KPI_CREATED}}', String(kpi.created))
+        .replace('{{KPI_RESOLVED}}', String(kpi.resolved))
+        .replace('{{KPI_RATE}}', displayRate)
+        .replace('{{KPI_EXTRA_NOTE}}', extraNote)
+        .replace('{{KPI_BACKLOG_START}}', String(kpi.backlogStart))
+        .replace('{{KPI_BACKLOG_END}}', String(kpi.backlogEnd))
+        .replace('{{KPI_AVG_RES}}', kpi.avgResolutionHours !== null ? `${kpi.avgResolutionHours.toFixed(1)} h` : '—')
+        .replace('{{KPI_AVG_TIC}}', kpi.avgTakeInChargeHours !== null ? `${kpi.avgTakeInChargeHours.toFixed(1)} h` : '—')
+        .replace('{{SERVICE_ROWS}}', serviceRows)
+        .replace('{{PRIORITY_ROWS}}', priorityRows)
+        .replace('{{WEEKLY_TREND_ROWS}}', weeklyTrendRows)
+        .replace('{{COMPARISON_ROWS}}', comparisonRows);
+
+      const statusLabels: Record<string, string> = {
+        OPEN: 'Ouvert', IN_PROGRESS: 'En cours', RESOLVED: 'Résolu',
+        CLOSED: 'Clôturé', CANCELLED: 'Annulé',
+      };
+      const incidentRows = Array.isArray(data.incidents) && data.incidents.length
+        ? data.incidents.map((inc: any) => {
+            const statusLabel = statusLabels[inc.status] || inc.status;
+            return `
+            <tr>
+              <td><strong>${escapeHtml(inc.reference)}</strong></td>
+              <td class="desc-cell">${escapeHtml(inc.description)}</td>
+              <td><span class="status-badge status-${inc.status}">${escapeHtml(statusLabel)}</span></td>
+              <td class="num ${`prio-${inc.priority}`}">${escapeHtml(inc.priority)}</td>
+              <td>${escapeHtml(inc.serviceEmetteur)}</td>
+              <td>${escapeHtml(inc.serviceRecepteur)}</td>
+              <td class="num">${escapeHtml(inc.createdAt)}</td>
+              <td class="desc-cell">${inc.rootCause ? escapeHtml(inc.rootCause) : '<span class="text-muted">—</span>'}</td>
+            </tr>`;
+          }).join('')
+        : '<tr><td colspan="8" class="empty">Aucun incident créé ce mois</td></tr>';
+
+      html = html.replace('{{INCIDENT_ROWS}}', incidentRows);
+
+      const pdfBuffer = await IncidentPdfService.generateBuffer(html);
+
+      const filename = `rapport_mensuel_${data.period.startDate}.pdf`;
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', String(pdfBuffer.length));
+      return res.status(200).send(pdfBuffer);
+    } catch (error) {
+      return respondPdfError(res, error, 'Erreur génération PDF mensuel');
+    }
+  }
+
+  /**
+   * POST /api/v1/reports/monthly/export/excel
+   * Body: { month?: "2026-09" }
+   */
+  static async exportMonthlyExcel(req: Request, res: Response) {
+    try {
+      const authUser = (req as any).user;
+      if (!authUser?.id) return res.status(401).json({ message: 'Unauthorized' });
+
+      const dbUser = await prisma.user.findUnique({
+        where: { id: authUser.id },
+        include: { roles: { include: { role: true } } },
+      });
+      if (!dbUser) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+      const roles = dbUser.roles
+        .map((r) => r.role?.name)
+        .filter(Boolean)
+        .map((n: string) => n.toUpperCase());
+
+      const user = { id: dbUser.id, roles, siteId: dbUser.siteId ?? undefined };
+
+      const monthParam = req.body?.month as string | undefined;
+      let data;
+
+      if (monthParam) {
+        const match = monthParam.match(/^(\d{4})-(\d{1,2})$/);
+        if (!match) {
+          return res.status(400).json({ message: 'Format de mois invalide' });
+        }
+        data = await monthlyReportService.getMonthlyReport(parseInt(match[2], 10), parseInt(match[1], 10), user);
+      } else {
+        data = await monthlyReportService.getCurrentMonthReport(user);
+      }
+
+      const options: ReportExcelOptions = {
+        sheetTitle: 'Rapport Mensuel',
+        reportTitle: 'RAPPORT MENSUEL',
+        periodLabel: data.period.label,
+        periodStart: data.period.startDate,
+        periodEnd: data.period.endDate,
+        kpi: data.kpi,
+        byService: data.byService,
+        byPriority: data.byPriority,
+        trendTitle: 'Tendance hebdomadaire',
+        trend: data.weeklyTrend.map((w) => ({
+          label: w.weekLabel,
+          created: w.created,
+          resolved: w.resolved,
+        })),
+        comparison: data.comparison
+          ? {
+              previousLabel: 'M-1',
+              currentKpi: data.kpi,
+              previousKpi: data.comparison.previousMonth,
+              resolutionRateChange: data.comparison.resolutionRateChange,
+              createdChange: data.comparison.createdChange,
+              resolvedChange: data.comparison.resolvedChange,
+              backlogEndChange: data.comparison.backlogEndChange,
+              avgResolutionChange: data.comparison.avgResolutionChange,
+            }
+          : null,
+        incidents: data.incidents,
+      };
+
+      const buffer = await buildReportWorkbook(options);
+
+      const filename = `rapport_mensuel_${data.period.startDate}.xlsx`;
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', String(buffer.length));
+      return res.status(200).send(buffer);
+    } catch (error) {
+      console.error('[REPORT] exportMonthlyExcel error:', error);
+      return res.status(500).json({ message: 'Erreur génération Excel mensuel' });
+    }
+  }
+
+  /* ------------------------------------------------------ */
+  /*  Quarterly reports                                      */
+  /* ------------------------------------------------------ */
+
+  /**
+   * GET /api/v1/reports/quarterly/available-quarters
+   */
+  static async getAvailableQuarters(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const periods = await quarterlyReportService.getAvailableQuarters(user);
+      return res.status(200).json(periods);
+    } catch (error) {
+      console.error('[REPORT] getAvailableQuarters error:', error);
+      return res.status(500).json({ message: 'Erreur récupération trimestres disponibles' });
+    }
+  }
+
+  /**
+   * GET /api/v1/reports/quarterly?quarter=2026-Q3
+   * GET /api/v1/reports/quarterly/current
+   */
+  static async getQuarterlyReport(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const { quarter } = req.query as { quarter?: string };
+
+      if (quarter) {
+        const match = quarter.match(/^(\d{4})-Q(\d)$/);
+        if (!match) {
+          return res.status(400).json({ message: 'Format attendu : YYYY-Q (ex: 2026-Q3)' });
+        }
+        const year = parseInt(match[1], 10);
+        const q = parseInt(match[2], 10);
+        if (q < 1 || q > 4) {
+          return res.status(400).json({ message: 'Le trimestre doit être entre 1 et 4' });
+        }
+        const data = await quarterlyReportService.getQuarterlyReport(q, year, user);
+        return res.status(200).json(data);
+      }
+
+      const data = await quarterlyReportService.getCurrentQuarterReport(user);
+      return res.status(200).json(data);
+    } catch (error) {
+      console.error('[REPORT] getQuarterlyReport error:', error);
+      return res.status(500).json({ message: 'Erreur récupération rapport trimestriel' });
+    }
+  }
+
+  /**
+   * POST /api/v1/reports/quarterly/export/pdf
+   * Body: { quarter?: "2026-Q3" }
+   */
+  static async exportQuarterlyPdf(req: Request, res: Response) {
+    try {
+      const authUser = (req as any).user;
+      if (!authUser?.id) return res.status(401).json({ message: 'Unauthorized' });
+
+      const dbUser = await prisma.user.findUnique({
+        where: { id: authUser.id },
+        include: { roles: { include: { role: true } } },
+      });
+      if (!dbUser) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+      const roles = dbUser.roles
+        .map((r) => r.role?.name)
+        .filter(Boolean)
+        .map((n: string) => n.toUpperCase());
+
+      const user = { id: dbUser.id, roles, siteId: dbUser.siteId ?? undefined };
+
+      const quarterParam = req.body?.quarter as string | undefined;
+      let data;
+
+      if (quarterParam) {
+        const match = quarterParam.match(/^(\d{4})-Q(\d)$/);
+        if (!match) {
+          return res.status(400).json({ message: 'Format de trimestre invalide' });
+        }
+        data = await quarterlyReportService.getQuarterlyReport(parseInt(match[2], 10), parseInt(match[1], 10), user);
+      } else {
+        data = await quarterlyReportService.getCurrentQuarterReport(user);
+      }
+
+      const TEMPLATE_DIR = path.resolve(__dirname, '../../../../templates');
+      const ASSETS_DIR = path.resolve(__dirname, '../../../../assets');
+
+      const templatePath = path.join(TEMPLATE_DIR, 'quarterly-report.html');
+
+      let template: string;
+      try {
+        template = await fs.readFile(templatePath, 'utf8');
+      } catch {
+        return res.status(500).json({ message: 'Template de rapport trimestriel introuvable' });
+      }
+
+      let logoBase64 = '';
+      try {
+        const logoBuffer = await fs.readFile(path.join(ASSETS_DIR, 'logo.png'));
+        logoBase64 = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+      } catch {
+        logoBase64 = '';
+      }
+
+      const barWidth = (rate: number | null): string => {
+        if (rate === null) return '0';
+        return String(Math.min(rate, 100));
+      };
+
+      const kpi = data.kpi;
+      const comparison = data.comparison;
+
+      const renderChange = (value: number | null, unit: string, inverse = false): string => {
+        if (value === null) return '<span class="neutral">—</span>';
+        const abs = Math.abs(value);
+        const formatted = unit === 'pts'
+          ? `${abs.toFixed(1)} pts`
+          : `${abs.toFixed(1)}%`;
+        if (Math.abs(value) < 0.01) return `<span class="neutral">→ ${formatted}</span>`;
+        const isPositive = inverse ? value < 0 : value > 0;
+        if (isPositive) {
+          return `<span class="good">▲ ${formatted}</span>`;
+        }
+        return `<span class="bad">▼ ${formatted}</span>`;
+      };
+
+      const displayRate = kpi.resolutionRate !== null ? `${kpi.cappedRate.toFixed(1)}%` : 'N/A';
+      const extraNote = kpi.extraResolvedFromStock > 0
+        ? `<p class="note">Dont ${kpi.extraResolvedFromStock} résolu(s) d'anciens stocks</p>`
+        : '';
+
+      const serviceRows = data.byService.length
+        ? data.byService.map((s) => `
+          <tr>
+            <td>${escapeHtml(s.name)}</td>
+            <td class="num">${s.created}</td>
+            <td class="num">${s.resolved}</td>
+            <td class="num">${s.rate !== null ? `${s.rate.toFixed(1)}%` : 'N/A'}
+              <div class="bar-bg"><div class="bar-fill" style="width:${barWidth(s.rate)}%"></div></div>
+            </td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" class="empty">Aucune donnée ce trimestre</td></tr>';
+
+      const priorityRows = data.byPriority.length
+        ? data.byPriority.map((p) => `
+          <tr>
+            <td>${escapeHtml(p.name)}</td>
+            <td class="num">${p.created}</td>
+            <td class="num">${p.resolved}</td>
+            <td class="num">${p.rate !== null ? `${p.rate.toFixed(1)}%` : 'N/A'}
+              <div class="bar-bg"><div class="bar-fill" style="width:${barWidth(p.rate)}%"></div></div>
+            </td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" class="empty">Aucune donnée ce trimestre</td></tr>';
+
+      const weeklyTrendRows = data.weeklyTrend.map((w) => `
+        <tr>
+          <td>${escapeHtml(w.weekLabel)}</td>
+          <td class="num">${w.created}</td>
+          <td class="num">${w.resolved}</td>
+          <td class="num">
+            <div class="mini-bar">
+              <div class="bar-created" style="width:${w.created > 0 ? Math.max(2, (w.created / Math.max(...data.weeklyTrend.map((x) => x.created), 1)) * 100) : 0}%"></div>
+              <div class="bar-resolved" style="width:${w.resolved > 0 ? Math.max(2, (w.resolved / Math.max(...data.weeklyTrend.map((x) => x.resolved), 1)) * 100) : 0}%"></div>
+            </div>
+          </td>
+        </tr>`).join('');
+
+      const comparisonRows = comparison
+        ? `
+        <tr>
+          <td>Créés</td>
+          <td class="num">${kpi.created}</td>
+          <td class="num">${comparison.previousQuarter.created}</td>
+          <td class="num">${renderChange(comparison.createdChange, 'pct')}</td>
+        </tr>
+        <tr>
+          <td>Résolus</td>
+          <td class="num">${kpi.resolved}</td>
+          <td class="num">${comparison.previousQuarter.resolved}</td>
+          <td class="num">${renderChange(comparison.resolvedChange, 'pct')}</td>
+        </tr>
+        <tr>
+          <td>Taux de résolution</td>
+          <td class="num">${displayRate}</td>
+          <td class="num">${comparison.previousQuarter.resolutionRate !== null ? `${comparison.previousQuarter.cappedRate.toFixed(1)}%` : 'N/A'}</td>
+          <td class="num">${renderChange(comparison.resolutionRateChange, 'pts')}</td>
+        </tr>
+        <tr>
+          <td>Incidents en cours (fin)</td>
+          <td class="num">${kpi.backlogEnd}</td>
+          <td class="num">${comparison.previousQuarter.backlogEnd}</td>
+          <td class="num">${renderChange(comparison.backlogEndChange, 'pct', true)}</td>
+        </tr>
+        <tr>
+          <td>Tps moy. résolution</td>
+          <td class="num">${kpi.avgResolutionHours !== null ? `${kpi.avgResolutionHours.toFixed(1)} h` : '—'}</td>
+          <td class="num">${comparison.previousQuarter.avgResolutionHours !== null ? `${comparison.previousQuarter.avgResolutionHours.toFixed(1)} h` : '—'}</td>
+          <td class="num">${renderChange(comparison.avgResolutionChange, 'pct', true)}</td>
+        </tr>`
+        : '<tr><td colspan="4" class="empty">Trimestre précédent non disponible</td></tr>';
+
+      let html = template
+        .replace(/{{LOGO_URL}}/g, logoBase64)
+        .replace(/{{PERIOD_LABEL}}/g, escapeHtml(data.period.label))
+        .replace(/{{PERIOD_START}}/g, formatDateFr(data.period.startDate))
+        .replace(/{{PERIOD_END}}/g, formatDateFr(data.period.endDate))
+        .replace(/{{EXPORT_DATE}}/g, new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }))
+        .replace('{{KPI_CREATED}}', String(kpi.created))
+        .replace('{{KPI_RESOLVED}}', String(kpi.resolved))
+        .replace('{{KPI_RATE}}', displayRate)
+        .replace('{{KPI_EXTRA_NOTE}}', extraNote)
+        .replace('{{KPI_BACKLOG_START}}', String(kpi.backlogStart))
+        .replace('{{KPI_BACKLOG_END}}', String(kpi.backlogEnd))
+        .replace('{{KPI_AVG_RES}}', kpi.avgResolutionHours !== null ? `${kpi.avgResolutionHours.toFixed(1)} h` : '—')
+        .replace('{{KPI_AVG_TIC}}', kpi.avgTakeInChargeHours !== null ? `${kpi.avgTakeInChargeHours.toFixed(1)} h` : '—')
+        .replace('{{SERVICE_ROWS}}', serviceRows)
+        .replace('{{PRIORITY_ROWS}}', priorityRows)
+        .replace('{{WEEKLY_TREND_ROWS}}', weeklyTrendRows)
+        .replace('{{COMPARISON_ROWS}}', comparisonRows);
+
+      const statusLabels: Record<string, string> = {
+        OPEN: 'Ouvert', IN_PROGRESS: 'En cours', RESOLVED: 'Résolu',
+        CLOSED: 'Clôturé', CANCELLED: 'Annulé',
+      };
+      const incidentRows = Array.isArray(data.incidents) && data.incidents.length
+        ? data.incidents.map((inc: any) => {
+            const statusLabel = statusLabels[inc.status] || inc.status;
+            return `
+            <tr>
+              <td><strong>${escapeHtml(inc.reference)}</strong></td>
+              <td class="desc-cell">${escapeHtml(inc.description)}</td>
+              <td><span class="status-badge status-${inc.status}">${escapeHtml(statusLabel)}</span></td>
+              <td class="num ${`prio-${inc.priority}`}">${escapeHtml(inc.priority)}</td>
+              <td>${escapeHtml(inc.serviceEmetteur)}</td>
+              <td>${escapeHtml(inc.serviceRecepteur)}</td>
+              <td class="num">${escapeHtml(inc.createdAt)}</td>
+              <td class="desc-cell">${inc.rootCause ? escapeHtml(inc.rootCause) : '<span class="text-muted">—</span>'}</td>
+            </tr>`;
+          }).join('')
+        : '<tr><td colspan="8" class="empty">Aucun incident créé ce trimestre</td></tr>';
+
+      html = html.replace('{{INCIDENT_ROWS}}', incidentRows);
+
+      const pdfBuffer = await IncidentPdfService.generateBuffer(html);
+
+      const filename = `rapport_trimestriel_${data.period.startDate}.pdf`;
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', String(pdfBuffer.length));
+      return res.status(200).send(pdfBuffer);
+    } catch (error) {
+      return respondPdfError(res, error, 'Erreur génération PDF trimestriel');
+    }
+  }
+
+  /**
+   * POST /api/v1/reports/quarterly/export/excel
+   */
+  static async exportQuarterlyExcel(req: Request, res: Response) {
+    try {
+      const authUser = (req as any).user;
+      if (!authUser?.id) return res.status(401).json({ message: 'Unauthorized' });
+
+      const dbUser = await prisma.user.findUnique({
+        where: { id: authUser.id },
+        include: { roles: { include: { role: true } } },
+      });
+      if (!dbUser) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+      const roles = dbUser.roles
+        .map((r) => r.role?.name)
+        .filter(Boolean)
+        .map((n: string) => n.toUpperCase());
+
+      const user = { id: dbUser.id, roles, siteId: dbUser.siteId ?? undefined };
+
+      const quarterParam = req.body?.quarter as string | undefined;
+      let data;
+
+      if (quarterParam) {
+        const match = quarterParam.match(/^(\d{4})-Q(\d)$/);
+        if (!match) return res.status(400).json({ message: 'Format de trimestre invalide' });
+        data = await quarterlyReportService.getQuarterlyReport(parseInt(match[2], 10), parseInt(match[1], 10), user);
+      } else {
+        data = await quarterlyReportService.getCurrentQuarterReport(user);
+      }
+
+      const options: ReportExcelOptions = {
+        sheetTitle: 'Rapport Trimestriel',
+        reportTitle: 'RAPPORT TRIMESTRIEL',
+        periodLabel: data.period.label,
+        periodStart: data.period.startDate,
+        periodEnd: data.period.endDate,
+        kpi: data.kpi,
+        byService: data.byService,
+        byPriority: data.byPriority,
+        trendTitle: 'Tendance hebdomadaire',
+        trend: data.weeklyTrend.map((w: any) => ({
+          label: w.weekLabel,
+          created: w.created,
+          resolved: w.resolved,
+        })),
+        comparison: data.comparison
+          ? {
+              previousLabel: 'T-1',
+              currentKpi: data.kpi,
+              previousKpi: data.comparison.previousQuarter,
+              resolutionRateChange: data.comparison.resolutionRateChange,
+              createdChange: data.comparison.createdChange,
+              resolvedChange: data.comparison.resolvedChange,
+              backlogEndChange: data.comparison.backlogEndChange,
+              avgResolutionChange: data.comparison.avgResolutionChange,
+            }
+          : null,
+        incidents: data.incidents,
+      };
+
+      const buffer = await buildReportWorkbook(options);
+
+      const filename = `rapport_trimestriel_${data.period.startDate}.xlsx`;
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', String(buffer.length));
+      return res.status(200).send(buffer);
+    } catch (error) {
+      console.error('[REPORT] exportQuarterlyExcel error:', error);
+      return res.status(500).json({ message: 'Erreur génération Excel trimestriel' });
+    }
+  }
+
+  /* ------------------------------------------------------ */
+  /*  Annual reports (bilan annuel)                          */
+  /* ------------------------------------------------------ */
+
+  /**
+   * GET /api/v1/reports/annual/available-years
+   */
+  static async getAvailableYears(req: Request, res: Response) {
+    try {
+      const authUser = (req as any).user;
+      if (!authUser?.id) return res.status(401).json({ message: 'Unauthorized' });
+
+      const dbUser = await prisma.user.findUnique({
+        where: { id: authUser.id },
+        include: { roles: { include: { role: true } } },
+      });
+      if (!dbUser) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+      const roles = dbUser.roles
+        .map((r) => r.role?.name)
+        .filter(Boolean)
+        .map((n: string) => n.toUpperCase());
+
+      const user = { id: dbUser.id, roles, siteId: dbUser.siteId ?? undefined };
+      const years = await annualReportService.getAvailableYears(user);
+      return res.status(200).json(years);
+    } catch (error) {
+      console.error('[REPORT] getAvailableYears error:', error);
+      return res.status(500).json({ message: 'Erreur récupération années disponibles' });
+    }
+  }
+
+  /**
+   * GET /api/v1/reports/annual?year=2026
+   * GET /api/v1/reports/annual/current
+   */
+  static async getAnnualReport(req: Request, res: Response) {
+    try {
+      const authUser = (req as any).user;
+      if (!authUser?.id) return res.status(401).json({ message: 'Unauthorized' });
+
+      const dbUser = await prisma.user.findUnique({
+        where: { id: authUser.id },
+        include: { roles: { include: { role: true } } },
+      });
+      if (!dbUser) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+      const roles = dbUser.roles
+        .map((r) => r.role?.name)
+        .filter(Boolean)
+        .map((n: string) => n.toUpperCase());
+
+      const user = { id: dbUser.id, roles, siteId: dbUser.siteId ?? undefined };
+
+      const yearParam = req.query.year as string | undefined;
+      let data;
+
+      if (yearParam) {
+        const match = yearParam.match(/^(\d{4})$/);
+        if (!match) {
+          return res.status(400).json({ message: 'Format attendu : YYYY (ex: 2026)' });
+        }
+        data = await annualReportService.getAnnualReport(parseInt(match[1], 10), user);
+      } else {
+        data = await annualReportService.getCurrentYearReport(user);
+      }
+      return res.status(200).json(data);
+    } catch (error) {
+      console.error('[REPORT] getAnnualReport error:', error);
+      return res.status(500).json({ message: 'Erreur récupération rapport annuel' });
+    }
+  }
+
+  /**
+   * POST /api/v1/reports/annual/export/pdf
+   * Body: { year?: "2026" } — si omis, année courante
+   */
+  static async exportAnnualPdf(req: Request, res: Response) {
+    try {
+      const authUser = (req as any).user;
+      if (!authUser?.id) return res.status(401).json({ message: 'Unauthorized' });
+
+      const dbUser = await prisma.user.findUnique({
+        where: { id: authUser.id },
+        include: { roles: { include: { role: true } } },
+      });
+      if (!dbUser) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+      const roles = dbUser.roles
+        .map((r) => r.role?.name)
+        .filter(Boolean)
+        .map((n: string) => n.toUpperCase());
+
+      const user = { id: dbUser.id, roles, siteId: dbUser.siteId ?? undefined };
+
+      const yearParam = req.body?.year as string | undefined;
+      let data;
+
+      if (yearParam) {
+        const match = yearParam.match(/^(\d{4})$/);
+        if (!match) return res.status(400).json({ message: 'Format d’année invalide' });
+        data = await annualReportService.getAnnualReport(parseInt(match[1], 10), user);
+      } else {
+        data = await annualReportService.getCurrentYearReport(user);
+      }
+
+      const TEMPLATE_DIR = path.resolve(__dirname, '../../../../templates');
+      const ASSETS_DIR = path.resolve(__dirname, '../../../../assets');
+
+      const templatePath = path.join(TEMPLATE_DIR, 'annual-report.html');
+
+      let template: string;
+      try {
+        template = await fs.readFile(templatePath, 'utf8');
+      } catch {
+        return res.status(500).json({ message: 'Template de rapport annuel introuvable' });
+      }
+
+      let logoBase64 = '';
+      try {
+        const logoBuffer = await fs.readFile(path.join(ASSETS_DIR, 'logo.png'));
+        logoBase64 = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+      } catch {
+        logoBase64 = '';
+      }
+
+      const barWidth = (rate: number | null): string => {
+        if (rate === null) return '0';
+        return String(Math.min(rate, 100));
+      };
+
+      const kpi = data.kpi;
+      const comparison = data.comparison;
+
+      const renderChange = (value: number | null, unit: string, inverse = false): string => {
+        if (value === null) return '<span class="neutral">—</span>';
+        const abs = Math.abs(value);
+        const formatted = unit === 'pts'
+          ? `${abs.toFixed(1)} pts`
+          : `${abs.toFixed(1)}%`;
+        if (Math.abs(value) < 0.01) return `<span class="neutral">→ ${formatted}</span>`;
+        const isPositive = inverse ? value < 0 : value > 0;
+        if (isPositive) {
+          return `<span class="good">▲ ${formatted}</span>`;
+        }
+        return `<span class="bad">▼ ${formatted}</span>`;
+      };
+
+      const displayRate = kpi.resolutionRate !== null ? `${kpi.cappedRate.toFixed(1)}%` : 'N/A';
+      const extraNote = kpi.extraResolvedFromStock > 0
+        ? `<p class="note">Dont ${kpi.extraResolvedFromStock} résolu(s) d'anciens stocks</p>`
+        : '';
+
+      const serviceRows = data.byService.length
+        ? data.byService.map((s: any) => `
+          <tr>
+            <td>${escapeHtml(s.name)}</td>
+            <td class="num">${s.created}</td>
+            <td class="num">${s.resolved}</td>
+            <td class="num">${s.rate !== null ? `${s.rate.toFixed(1)}%` : 'N/A'}
+              <div class="bar-bg"><div class="bar-fill" style="width:${barWidth(s.rate)}%"></div></div>
+            </td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" class="empty">Aucune donnée cette année</td></tr>';
+
+      const priorityRows = data.byPriority.length
+        ? data.byPriority.map((p: any) => `
+          <tr>
+            <td>${escapeHtml(p.name)}</td>
+            <td class="num">${p.created}</td>
+            <td class="num">${p.resolved}</td>
+            <td class="num">${p.rate !== null ? `${p.rate.toFixed(1)}%` : 'N/A'}
+              <div class="bar-bg"><div class="bar-fill" style="width:${barWidth(p.rate)}%"></div></div>
+            </td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" class="empty">Aucune donnée cette année</td></tr>';
+
+      // ── Répartition par trimestre ──
+      const quarterRows = data.byQuarter.map((q: any) => `
+        <tr>
+          <td>${escapeHtml(q.label)}</td>
+          <td class="num">${q.created}</td>
+          <td class="num">${q.resolved}</td>
+          <td class="num">${q.rate !== null ? `${q.rate.toFixed(1)}%` : 'N/A'}</td>
+        </tr>`).join('');
+
+      // ── Tendance mensuelle ──
+      const monthlyTrendRows = data.monthlyTrend.map((m: any) => `
+        <tr>
+          <td>${escapeHtml(m.label)}</td>
+          <td class="num">${m.created}</td>
+          <td class="num">${m.resolved}</td>
+          <td class="num">
+            <div class="mini-bar">
+              <div class="bar-created" style="width:${m.created > 0 ? Math.max(2, (m.created / Math.max(...data.monthlyTrend.map((x: any) => x.created), 1)) * 100) : 0}%"></div>
+              <div class="bar-resolved" style="width:${m.resolved > 0 ? Math.max(2, (m.resolved / Math.max(...data.monthlyTrend.map((x: any) => x.resolved), 1)) * 100) : 0}%"></div>
+            </div>
+          </td>
+        </tr>`).join('');
+
+      const comparisonRows = comparison
+        ? `
+        <tr>
+          <td>Créés</td>
+          <td class="num">${kpi.created}</td>
+          <td class="num">${comparison.previousYear.created}</td>
+          <td class="num">${renderChange(comparison.createdChange, 'pct')}</td>
+        </tr>
+        <tr>
+          <td>Résolus</td>
+          <td class="num">${kpi.resolved}</td>
+          <td class="num">${comparison.previousYear.resolved}</td>
+          <td class="num">${renderChange(comparison.resolvedChange, 'pct')}</td>
+        </tr>
+        <tr>
+          <td>Taux de résolution</td>
+          <td class="num">${displayRate}</td>
+          <td class="num">${comparison.previousYear.resolutionRate !== null ? `${comparison.previousYear.cappedRate.toFixed(1)}%` : 'N/A'}</td>
+          <td class="num">${renderChange(comparison.resolutionRateChange, 'pts')}</td>
+        </tr>
+        <tr>
+          <td>Incidents en cours (fin)</td>
+          <td class="num">${kpi.backlogEnd}</td>
+          <td class="num">${comparison.previousYear.backlogEnd}</td>
+          <td class="num">${renderChange(comparison.backlogEndChange, 'pct', true)}</td>
+        </tr>
+        <tr>
+          <td>Tps moy. résolution</td>
+          <td class="num">${kpi.avgResolutionHours !== null ? `${kpi.avgResolutionHours.toFixed(1)} h` : '—'}</td>
+          <td class="num">${comparison.previousYear.avgResolutionHours !== null ? `${comparison.previousYear.avgResolutionHours.toFixed(1)} h` : '—'}</td>
+          <td class="num">${renderChange(comparison.avgResolutionChange, 'pct', true)}</td>
+        </tr>`
+        : '<tr><td colspan="4" class="empty">Année précédente non disponible</td></tr>';
+
+      const html = template
+        .replace(/{{LOGO_URL}}/g, logoBase64)
+        .replace(/{{PERIOD_LABEL}}/g, escapeHtml(data.period.label))
+        .replace(/{{PERIOD_START}}/g, formatDateFr(data.period.startDate))
+        .replace(/{{PERIOD_END}}/g, formatDateFr(data.period.endDate))
+        .replace(/{{EXPORT_DATE}}/g, new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }))
+        .replace('{{KPI_CREATED}}', String(kpi.created))
+        .replace('{{KPI_RESOLVED}}', String(kpi.resolved))
+        .replace('{{KPI_RATE}}', displayRate)
+        .replace('{{KPI_EXTRA_NOTE}}', extraNote)
+        .replace('{{KPI_BACKLOG_START}}', String(kpi.backlogStart))
+        .replace('{{KPI_BACKLOG_END}}', String(kpi.backlogEnd))
+        .replace('{{KPI_AVG_RES}}', kpi.avgResolutionHours !== null ? `${kpi.avgResolutionHours.toFixed(1)} h` : '—')
+        .replace('{{KPI_AVG_TIC}}', kpi.avgTakeInChargeHours !== null ? `${kpi.avgTakeInChargeHours.toFixed(1)} h` : '—')
+        .replace('{{SERVICE_ROWS}}', serviceRows)
+        .replace('{{PRIORITY_ROWS}}', priorityRows)
+        .replace('{{QUARTER_ROWS}}', quarterRows)
+        .replace('{{MONTHLY_TREND_ROWS}}', monthlyTrendRows)
+        .replace('{{COMPARISON_ROWS}}', comparisonRows);
+
+      const pdfBuffer = await IncidentPdfService.generateBuffer(html);
+
+      const filename = `rapport_annuel_${data.period.year}.pdf`;
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', String(pdfBuffer.length));
+      return res.status(200).send(pdfBuffer);
+    } catch (error) {
+      return respondPdfError(res, error, 'Erreur génération PDF annuel');
+    }
+  }
+
+  /**
+   * POST /api/v1/reports/annual/export/excel
+   */
+  static async exportAnnualExcel(req: Request, res: Response) {
+    try {
+      const authUser = (req as any).user;
+      if (!authUser?.id) return res.status(401).json({ message: 'Unauthorized' });
+
+      const dbUser = await prisma.user.findUnique({
+        where: { id: authUser.id },
+        include: { roles: { include: { role: true } } },
+      });
+      if (!dbUser) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+      const roles = dbUser.roles
+        .map((r) => r.role?.name)
+        .filter(Boolean)
+        .map((n: string) => n.toUpperCase());
+
+      const user = { id: dbUser.id, roles, siteId: dbUser.siteId ?? undefined };
+
+      const yearParam = req.body?.year as string | undefined;
+      let data;
+
+      if (yearParam) {
+        const match = yearParam.match(/^(\d{4})$/);
+        if (!match) return res.status(400).json({ message: 'Format d’année invalide' });
+        data = await annualReportService.getAnnualReport(parseInt(match[1], 10), user);
+      } else {
+        data = await annualReportService.getCurrentYearReport(user);
+      }
+
+      const options: ReportExcelOptions = {
+        sheetTitle: 'Rapport Annuel',
+        reportTitle: 'RAPPORT ANNUEL (BILAN)',
+        periodLabel: `Année ${data.period.year}`,
+        periodStart: data.period.startDate,
+        periodEnd: data.period.endDate,
+        kpi: data.kpi,
+        byService: data.byService,
+        byPriority: data.byPriority,
+        quarterly: data.byQuarter.map((q: any) => ({
+          name: q.label,
+          created: q.created,
+          resolved: q.resolved,
+          rate: q.rate,
+        })),
+        trendTitle: 'Tendance mensuelle',
+        trend: data.monthlyTrend.map((m: any) => ({
+          label: m.label,
+          created: m.created,
+          resolved: m.resolved,
+        })),
+        comparison: data.comparison
+          ? {
+              previousLabel: 'N-1',
+              currentKpi: data.kpi,
+              previousKpi: data.comparison.previousYear,
+              resolutionRateChange: data.comparison.resolutionRateChange,
+              createdChange: data.comparison.createdChange,
+              resolvedChange: data.comparison.resolvedChange,
+              backlogEndChange: data.comparison.backlogEndChange,
+              avgResolutionChange: data.comparison.avgResolutionChange,
+            }
+          : null,
+        incidents: [],
+        skipIncidentsSheet: true,
+      };
+
+      const buffer = await buildReportWorkbook(options);
+
+      const filename = `rapport_annuel_${data.period.year}.xlsx`;
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', String(buffer.length));
+      return res.status(200).send(buffer);
+    } catch (error) {
+      console.error('[REPORT] exportAnnualExcel error:', error);
+      return res.status(500).json({ message: 'Erreur génération Excel annuel' });
+    }
+  }
+
+  /* ------------------------------------------------------ */
+  /*  SLA report (respect des délais)                        */
+  /* ------------------------------------------------------ */
+
+  /** Helper commun : résout l'utilisateur DB + les rôles. */
+  private static async resolveReportUser(req: Request) {
+    const authUser = (req as any).user;
+    if (!authUser?.id) return null;
+    const dbUser = await prisma.user.findUnique({
+      where: { id: authUser.id },
+      include: { roles: { include: { role: true } } },
+    });
+    if (!dbUser) return null;
+    const roles = dbUser.roles
+      .map((r) => r.role?.name)
+      .filter(Boolean)
+      .map((n: string) => n.toUpperCase());
+    return { user: { id: dbUser.id, roles, siteId: dbUser.siteId ?? undefined }, dbUser };
+  }
+
+  /**
+   * GET /api/v1/reports/sla?from=YYYY-MM-DD&to=YYYY-MM-DD&label=...
+   */
+  static async getSlaReport(req: Request, res: Response) {
+    try {
+      const resolved = await ReportController.resolveReportUser(req);
+      if (!resolved) return res.status(401).json({ message: 'Unauthorized' });
+      const range = resolveSlaRange(req.query);
+      if (!range) {
+        return res.status(400).json({ message: 'Paramètres from/to requis (YYYY-MM-DD)' });
+      }
+      const data = await slaReportService.getReport(range.start, range.end, resolved.user);
+      data.period.label = range.label;
+      return res.status(200).json(data);
+    } catch (error) {
+      console.error('[REPORT] getSlaReport error:', error);
+      return res.status(500).json({ message: 'Erreur récupération rapport SLA' });
+    }
+  }
+
+  /**
+   * POST /api/v1/reports/sla/export/pdf
+   * Body: { from, to, label }
+   */
+  static async exportSlaPdf(req: Request, res: Response) {
+    try {
+      const resolved = await ReportController.resolveReportUser(req);
+      if (!resolved) return res.status(401).json({ message: 'Unauthorized' });
+      const range = resolveSlaRange(req.body);
+      if (!range) {
+        return res.status(400).json({ message: 'Paramètres from/to requis' });
+      }
+      const data = await slaReportService.getReport(range.start, range.end, resolved.user);
+      data.period.label = range.label;
+
+      const TEMPLATE_DIR = path.resolve(__dirname, '../../../../templates');
+      const ASSETS_DIR = path.resolve(__dirname, '../../../../assets');
+
+      let template: string;
+      try {
+        template = await fs.readFile(path.join(TEMPLATE_DIR, 'sla-report.html'), 'utf8');
+      } catch {
+        return res.status(500).json({ message: 'Template de rapport SLA introuvable' });
+      }
+
+      let logoBase64 = '';
+      try {
+        const logoBuffer = await fs.readFile(path.join(ASSETS_DIR, 'logo.png'));
+        logoBase64 = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+      } catch {
+        logoBase64 = '';
+      }
+
+      const kpi = data.kpi;
+      const displayRate = kpi.slaRate !== null ? `${kpi.slaRate.toFixed(1)}%` : 'N/A';
+
+      const priorityRows = data.byPriority.length
+        ? data.byPriority.map((p) => `
+          <tr>
+            <td>${escapeHtml(p.name)}</td>
+            <td class="num">${p.resolved}</td>
+            <td class="num good">${p.respected}</td>
+            <td class="num bad">${p.breached}</td>
+            <td class="num">${p.rate !== null ? `${p.rate.toFixed(1)}%` : 'N/A'}
+              <div class="bar-bg"><div class="bar-fill" style="width:${Math.min(p.rate ?? 0, 100)}%"></div></div>
+            </td>
+          </tr>`).join('')
+        : '<tr><td colspan="5" class="empty">Aucun incident résolu sur la période</td></tr>';
+
+      const serviceRows = data.byService.length
+        ? data.byService.map((s) => `
+          <tr>
+            <td>${escapeHtml(s.name)}</td>
+            <td class="num">${s.resolved}</td>
+            <td class="num good">${s.respected}</td>
+            <td class="num bad">${s.breached}</td>
+            <td class="num">${s.rate !== null ? `${s.rate.toFixed(1)}%` : 'N/A'}
+              <div class="bar-bg"><div class="bar-fill" style="width:${Math.min(s.rate ?? 0, 100)}%"></div></div>
+            </td>
+          </tr>`).join('')
+        : '<tr><td colspan="5" class="empty">Aucun incident résolu sur la période</td></tr>';
+
+      const statusLabels: Record<string, string> = {
+        OPEN: 'Ouvert', IN_PROGRESS: 'En cours', RESOLVED: 'Résolu',
+        CLOSED: 'Clôturé', CANCELLED: 'Annulé',
+      };
+      const delayedRows = data.delayed.length
+        ? data.delayed.map((d) => {
+            const statusLabel = statusLabels[d.status] || d.status;
+            return `
+          <tr>
+            <td><strong>${escapeHtml(d.reference)}</strong></td>
+            <td class="desc-cell">${escapeHtml(d.description)}</td>
+            <td>${escapeHtml(statusLabel)}</td>
+            <td>${escapeHtml(d.priority)}</td>
+            <td>${escapeHtml(d.serviceEmetteur)}</td>
+            <td class="num">${escapeHtml(d.dueDate)}</td>
+            <td class="num">${d.resolvedAt ? escapeHtml(d.resolvedAt) : '<span class="text-muted">En cours</span>'}</td>
+            <td class="num bad">${d.daysLate} j</td>
+          </tr>`;
+          }).join('')
+        : '<tr><td colspan="8" class="empty">Aucun retard sur la période</td></tr>';
+
+      const html = template
+        .replace(/{{LOGO_URL}}/g, logoBase64)
+        .replace(/{{PERIOD_LABEL}}/g, escapeHtml(data.period.label))
+        .replace(/{{PERIOD_START}}/g, formatDateFr(data.period.startDate))
+        .replace(/{{PERIOD_END}}/g, formatDateFr(data.period.endDate))
+        .replace(/{{EXPORT_DATE}}/g, new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }))
+        .replace('{{KPI_RESOLVED}}', String(kpi.resolved))
+        .replace('{{KPI_RESPECTED}}', String(kpi.respected))
+        .replace('{{KPI_BREACHED}}', String(kpi.breached))
+        .replace('{{KPI_SLA}}', displayRate)
+        .replace('{{KPI_OVERDUE}}', String(kpi.overdueActive))
+        .replace('{{KPI_AVG_RES}}', kpi.avgResolutionHours !== null ? `${kpi.avgResolutionHours.toFixed(1)} h` : '—')
+        .replace('{{PRIORITY_ROWS}}', priorityRows)
+        .replace('{{SERVICE_ROWS}}', serviceRows)
+        .replace('{{DELAYED_ROWS}}', delayedRows);
+
+      const pdfBuffer = await IncidentPdfService.generateBuffer(html);
+
+      const filename = `rapport_sla_${data.period.startDate}_${data.period.endDate}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', String(pdfBuffer.length));
+      return res.status(200).send(pdfBuffer);
+    } catch (error) {
+      return respondPdfError(res, error, 'Erreur génération PDF SLA');
+    }
+  }
+
+  /**
+   * POST /api/v1/reports/sla/export/excel
+   * Body: { from, to, label }
+   */
+  static async exportSlaExcel(req: Request, res: Response) {
+    try {
+      const resolved = await ReportController.resolveReportUser(req);
+      if (!resolved) return res.status(401).json({ message: 'Unauthorized' });
+      const range = resolveSlaRange(req.body);
+      if (!range) {
+        return res.status(400).json({ message: 'Paramètres from/to requis' });
+      }
+      const data = await slaReportService.getReport(range.start, range.end, resolved.user);
+      data.period.label = range.label;
+
+      const buffer = await buildSlaWorkbook(data, range.label);
+
+      const filename = `rapport_sla_${data.period.startDate}_${data.period.endDate}.xlsx`;
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', String(buffer.length));
+      return res.status(200).send(buffer);
+    } catch (error) {
+      console.error('[REPORT] exportSlaExcel error:', error);
+      return res.status(500).json({ message: 'Erreur génération Excel SLA' });
     }
   }
 }

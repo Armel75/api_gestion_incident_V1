@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Export Tickets GLPI</title>
+  <style>
+  /* ===========================
+     GLOBAL
+  ============================ */
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11px;
+    color: #000;
+    margin: 15px;
+    line-height: 1.4;
+  }
+
+  /* ===========================
+     HEADER
+  ============================ */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 2px solid #1B4FD8;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+  }
+
+  .header-left strong {
+    font-size: 14px;
+    color: #1B4FD8;
+  }
+
+  .header-left div {
+    font-size: 10px;
+    color: #555;
+  }
+
+  .header-right {
+    text-align: right;
+    font-size: 10px;
+    line-height: 1.5;
+  }
+
+  .header-right .total-badge {
+    display: inline-block;
+    background-color: #1B4FD8;
+    color: #fff;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 4px 12px;
+    border-radius: 4px;
+    margin-top: 4px;
+  }
+
+  /* ===========================
+     TITLE
+  ============================ */
+  h1 {
+    text-align: center;
+    font-size: 15px;
+    margin: 12px 0 16px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #1B4FD8;
+  }
+
+  /* ===========================
+     TABLE
+  ============================ */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 16px;
+    font-size: 10px;
+  }
+
+  thead tr {
+    background-color: #1B4FD8;
+    color: #fff;
+  }
+
+  thead th {
+    padding: 7px 6px;
+    text-align: left;
+    font-weight: bold;
+    font-size: 10px;
+    border: 1px solid #1B4FD8;
+    white-space: nowrap;
+  }
+
+  tbody tr:nth-child(even) {
+    background-color: #F5F8FF;
+  }
+
+  tbody tr:nth-child(odd) {
+    background-color: #FFFFFF;
+  }
+
+  tbody td {
+    padding: 6px 6px;
+    border: 1px solid #D0D9F0;
+    vertical-align: top;
+    font-size: 10px;
+    word-break: break-word;
+  }
+
+  /* Status badge colors */
+  .status-nouveau { color: #856404; background-color: #FFF3CD; padding: 2px 6px; border-radius: 3px; font-weight: bold; }
+  .status-encours { color: #004085; background-color: #CCE5FF; padding: 2px 6px; border-radius: 3px; font-weight: bold; }
+  .status-attente { color: #555; background-color: #E9ECEF; padding: 2px 6px; border-radius: 3px; font-weight: bold; }
+  .status-resolu { color: #155724; background-color: #D4EDDA; padding: 2px 6px; border-radius: 3px; font-weight: bold; }
+  .status-cloture { color: #383D41; background-color: #D1D5DB; padding: 2px 6px; border-radius: 3px; font-weight: bold; }
+  .status-annule { color: #721C24; background-color: #F8D7DA; padding: 2px 6px; border-radius: 3px; font-weight: bold; }
+
+  /* ===========================
+     FOOTER
+  ============================ */
+  .footer {
+    margin-top: 12px;
+    font-size: 9px;
+    color: #888;
+    text-align: right;
+    border-top: 1px solid #ddd;
+    padding-top: 6px;
+  }
+
+  /* ===========================
+     PAGE BREAK
+  ============================ */
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <div class="header-left">
+      <strong>SOREPCO SA</strong><br/>
+      <div>Export Tickets GLPI — Gestion des Incidents</div>
+    </div>
+    <div class="header-right">
+      <div>Généré le {{GENERATED_AT}}</div>
+      <div>
+        <span class="total-badge">{{TOTAL}} ticket(s)</span>
+      </div>
+    </div>
+  </div>
+
+  <h1>LISTE DES TICKETS GLPI</h1>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>N° Ticket</th>
+        <th>Titre</th>
+        <th>Statut</th>
+        <th>Priorité</th>
+        <th>Urgence</th>
+        <th>Catégorie</th>
+        <th>Demandeur</th>
+        <th>Technicien</th>
+        <th>Ouvert le</th>
+        <th>Échéance</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ROWS}}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    SOREPCO SA — API Gestion des Incidents — Document généré automatiquement
+  </div>
+</body>
+</html>

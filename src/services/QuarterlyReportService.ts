@@ -1,70 +1,71 @@
 import prisma from '../infrastructure/database/prisma';
 
 /* ------------------------------------------------------------------ */
-/*  Types du rapport hebdomadaire                                      */
+/*  Types du rapport trimestriel                                        */
 /* ------------------------------------------------------------------ */
 
-export interface WeeklyReportPeriod {
-  weekNumber: number;
+export interface QuarterlyReportPeriod {
+  quarter: number;   // 1-4
   year: number;
   startDate: string; // ISO 8601
   endDate: string;   // ISO 8601
-  label: string;     // "Semaine 30 — 2026"
+  label: string;     // "T3 — 2026"
+  months: string[];   // ["Juillet", "Août", "Septembre"]
 }
 
-export interface WeeklyReportKpi {
+export interface QuarterlyReportKpi {
   created: number;
   resolved: number;
-  resolutionRate: number | null;       // null si 0 création (N/A)
-  cappedRate: number;                   // min(rate, 100)
-  extraResolvedFromStock: number;       // max(0, resolved - created)
-  backlogStart: number;                 // stock actif au début de la semaine
-  backlogEnd: number;                   // stock actif à la fin de la semaine
+  resolutionRate: number | null;
+  cappedRate: number;
+  extraResolvedFromStock: number;
+  backlogStart: number;
+  backlogEnd: number;
   avgResolutionHours: number | null;
   avgTakeInChargeHours: number | null;
 }
 
-export interface WeeklyReportComparison {
-  previousWeek: WeeklyReportKpi;
-  resolutionRateChange: number | null;   // points de pourcentage
-  createdChange: number | null;          // %
-  resolvedChange: number | null;         // %
-  backlogEndChange: number | null;       // %
-  avgResolutionChange: number | null;    // %
+export interface QuarterlyReportComparison {
+  previousQuarter: QuarterlyReportKpi;
+  resolutionRateChange: number | null;
+  createdChange: number | null;
+  resolvedChange: number | null;
+  backlogEndChange: number | null;
+  avgResolutionChange: number | null;
 }
 
-export interface WeeklyReportByPriority {
+export interface QuarterlyReportByPriority {
   name: string;
   created: number;
   resolved: number;
   rate: number | null;
 }
 
-export interface WeeklyReportByService {
+export interface QuarterlyReportByService {
   name: string;
   created: number;
   resolved: number;
   rate: number | null;
 }
 
-export interface WeeklyReportTrendDay {
-  dayLabel: string;     // "Lun 21", "Mar 22", …
-  date: string;         // ISO
+export interface QuarterlyReportTrendWeek {
+  weekLabel: string;   // "Sem. 36 — 2026"
+  date: string;        // ISO
   created: number;
   resolved: number;
 }
 
-export interface WeeklyReportData {
-  period: WeeklyReportPeriod;
-  kpi: WeeklyReportKpi;
-  byPriority: WeeklyReportByPriority[];
-  byService: WeeklyReportByService[];
-  dailyTrend: WeeklyReportTrendDay[];
-  comparison: WeeklyReportComparison | null; // null si pas de S-1
-  incidents: WeeklyReportIncidentDetail[];   // max 50 lignes
+export interface QuarterlyReportData {
+  period: QuarterlyReportPeriod;
+  kpi: QuarterlyReportKpi;
+  byPriority: QuarterlyReportByPriority[];
+  byService: QuarterlyReportByService[];
+  weeklyTrend: QuarterlyReportTrendWeek[];
+  comparison: QuarterlyReportComparison | null;
+  incidents: QuarterlyReportIncidentDetail[];
 }
 
-export interface WeeklyReportIncidentDetail {
+export interface QuarterlyReportIncidentDetail {
   reference: string;
   description: string;
   status: string;
@@ -77,8 +78,36 @@ export interface WeeklyReportIncidentDetail {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Helpers ISO week                                                   */
+/*  Helpers trimestre                                                    */
 /* ------------------------------------------------------------------ */
+
+const MONTH_NAMES = [
+  'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+];
+
+function quarterStartEnd(quarter: number, year: number): { start: Date; end: Date } {
+  const startMonth = (quarter - 1) * 3; // 0, 3, 6, 9
+  const endMonth = startMonth + 2;       // 2, 5, 8, 11
+  const start = new Date(Date.UTC(year, startMonth, 1, 0, 0, 0, 0));
+  const end = new Date(Date.UTC(year, endMonth + 1, 0, 23, 59, 59, 999));
+  return { start, end };
+}
+
+function formatPeriod(start: Date, end: Date, quarter: number): QuarterlyReportPeriod {
+  const months: string[] = [];
+  for (let m = start.getUTCMonth(); m <= end.getUTCMonth(); m++) {
+    months.push(MONTH_NAMES[m]);
+  }
+  return {
+    quarter,
+    year: start.getUTCFullYear(),
+    startDate: start.toISOString().slice(0, 10),
+    endDate: end.toISOString().slice(0, 10),
+    label: `T${quarter} — ${start.getUTCFullYear()}`,
+    months,
+  };
+}
 
 function getWeekNumber(date: Date): { week: number; year: number } {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -102,19 +131,8 @@ function weekStartEnd(week: number, year: number): { start: Date; end: Date } {
   };
 }
 
-function formatPeriod(start: Date, end: Date): WeeklyReportPeriod {
-  const { week, year } = getWeekNumber(start);
-  return {
-    weekNumber: week,
-    year,
-    startDate: start.toISOString().slice(0, 10),
-    endDate: end.toISOString().slice(0, 10),
-    label: `Semaine ${week} — ${year}`,
-  };
-}
-
 /* ------------------------------------------------------------------ */
-/*  Helper accès (copie de la logique IncidentService)                 */
+/*  Helper accès (copie de MonthlyReportService)                        */
 /* ------------------------------------------------------------------ */
 
 function isAdminLike(roles: string[]): boolean {
@@ -135,13 +153,10 @@ function buildUserFilter(user: { id: number; roles: string[]; siteId?: number })
 }
 
 /* ------------------------------------------------------------------ */
-/*  WeeklyReportService                                                */
+/*  QuarterlyReportService                                              */
 /* ------------------------------------------------------------------ */
 
-export class WeeklyReportService {
-  /**
-   * Calcule le backlog (incidents OPEN ou IN_PROGRESS) à une date donnée.
-   */
+export class QuarterlyReportService {
   private async backlogAt(
     date: Date,
     user: { id: number; roles: string[]; siteId?: number },
@@ -162,45 +177,56 @@ export class WeeklyReportService {
   }
 
   /**
-   * Point central : agrège tous les indicateurs d'une semaine.
+   * Vérifie dynamiquement si un trimestre a au moins un incident dans l'historique.
+   * Permet de déterminer si la comparaison T-1 est possible.
    */
-  async getWeeklyReport(
-    week: number,
+  private async hasDataForQuarter(
+    quarter: number,
     year: number,
     user: { id: number; roles: string[]; siteId?: number },
-  ): Promise<WeeklyReportData> {
-    const { start, end } = weekStartEnd(week, year);
-    const period = formatPeriod(start, end);
+  ): Promise<boolean> {
+    const { start, end } = quarterStartEnd(quarter, year);
+    const userFilter = buildUserFilter(user);
+    const found = await prisma.incident.findFirst({
+      where: { deletedAt: null, ...userFilter, createdAt: { lte: end } },
+      select: { id: true },
+    });
+    return found !== null;
+  }
+
+  async getQuarterlyReport(
+    quarter: number,
+    year: number,
+    user: { id: number; roles: string[]; siteId?: number },
+  ): Promise<QuarterlyReportData> {
+    const { start, end } = quarterStartEnd(quarter, year);
+    const period = formatPeriod(start, end, quarter);
 
     const userFilter = buildUserFilter(user);
     const baseWhere: any = { deletedAt: null, ...userFilter };
 
-    // ── 1. Incidents créés et résolus durant la semaine ──
+    // ── 1. Incidents créés et résolus durant le trimestre ──
     const [created, resolved, createdIncidents, resolvedIncidents] = await Promise.all([
-      // Nombre d'incidents créés dans la semaine
       prisma.incident.count({
         where: { ...baseWhere, createdAt: { gte: start, lte: end } },
       }),
-      // Nombre d'incidents résolus dans la semaine
       prisma.incident.count({
         where: { ...baseWhere, resolvedAt: { gte: start, lte: end } },
       }),
-      // Incidents créés (pour stats par priorité/service)
       prisma.incident.findMany({
         where: { ...baseWhere, createdAt: { gte: start, lte: end } },
         select: { criticality: true, reporter: { select: { site: { select: { name: true } } } } },
       }),
-      // Incidents résolus (pour stats par priorité/service)
       prisma.incident.findMany({
         where: { ...baseWhere, resolvedAt: { gte: start, lte: end } },
         select: { criticality: true, reporter: { select: { site: { select: { name: true } } } } },
       }),
     ]);
 
-    // ── 2. Backlog début / fin de semaine ──
-    const weekStartMinus1ms = new Date(start.getTime() - 1);
+    // ── 2. Backlog début / fin de trimestre ──
+    const quarterStartMinus1ms = new Date(start.getTime() - 1);
     const [backlogStart, backlogEnd] = await Promise.all([
-      this.backlogAt(weekStartMinus1ms, user),
+      this.backlogAt(quarterStartMinus1ms, user),
       this.backlogAt(end, user),
     ]);
 
@@ -254,7 +280,7 @@ export class WeeklyReportService {
       priorityMap.set(label, entry);
     }
 
-    const byPriority: WeeklyReportByPriority[] = priorityOrder
+    const byPriority: QuarterlyReportByPriority[] = priorityOrder
       .map((name) => {
         const entry = priorityMap.get(name) ?? { created: 0, resolved: 0 };
         return {
@@ -268,7 +294,7 @@ export class WeeklyReportService {
       })
       .filter((p) => p.created > 0 || p.resolved > 0);
 
-    // ── 6. Par service (site du déclarant) ──
+    // ── 6. Par service ──
     const serviceMap = new Map<string, { created: number; resolved: number }>();
     for (const inc of createdIncidents) {
       const siteName = (inc.reporter as any)?.site?.name ?? 'Non défini';
@@ -283,7 +309,7 @@ export class WeeklyReportService {
       serviceMap.set(siteName, entry);
     }
 
-    const byService: WeeklyReportByService[] = Array.from(serviceMap.entries())
+    const byService: QuarterlyReportByService[] = Array.from(serviceMap.entries())
       .map(([name, v]) => ({
         name,
         created: v.created,
@@ -294,13 +320,10 @@ export class WeeklyReportService {
       }))
       .sort((a, b) => b.created - a.created);
 
-    // ── 7. Trend journalier ──
-    // ── Trend journalier optimisé (1 seul appel Prisma) ──
-    const dayLabels = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-    const dailyTrend: WeeklyReportTrendDay[] = [];
+    // ── 7. Tendance hebdomadaire ──
+    const weeklyTrend: QuarterlyReportTrendWeek[] = [];
 
-    // Un seul fetch pour toute la semaine
-    const weekIncidents = await prisma.incident.findMany({
+    const quarterIncidents = await prisma.incident.findMany({
       where: {
         ...baseWhere,
         OR: [
@@ -311,34 +334,60 @@ export class WeeklyReportService {
       select: { createdAt: true, resolvedAt: true },
     });
 
-    for (let i = 0; i < 7; i++) {
-      const dayStart = new Date(start.getTime() + i * 86400000);
-      const dayEnd = new Date(dayStart.getTime() + 86400000 - 1);
+    // Semaines qui intersectent avec le trimestre
+    const weeksInQuarter = new Map<string, { created: number; resolved: number }>();
 
-      const dayCreated = weekIncidents.filter(
-        (inc) => inc.createdAt >= dayStart && inc.createdAt <= dayEnd,
-      ).length;
-      const dayResolved = weekIncidents.filter(
-        (inc) => inc.resolvedAt !== null && inc.resolvedAt! >= dayStart && inc.resolvedAt! <= dayEnd,
-      ).length;
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const { week, year: wYear } = getWeekNumber(new Date(d));
+      const key = `${wYear}-W${String(week).padStart(2, '0')}`;
+      if (!weeksInQuarter.has(key)) {
+        weeksInQuarter.set(key, { created: 0, resolved: 0 });
+      }
+    }
 
-      dailyTrend.push({
-        dayLabel: `${dayLabels[dayStart.getUTCDay()]} ${dayStart.getUTCDate()}`,
-        date: dayStart.toISOString().slice(0, 10),
-        created: dayCreated,
-        resolved: dayResolved,
+    for (const inc of quarterIncidents) {
+      const { week, year: wYear } = getWeekNumber(inc.createdAt);
+      const key = `${wYear}-W${String(week).padStart(2, '0')}`;
+      const entry = weeksInQuarter.get(key) ?? { created: 0, resolved: 0 };
+      entry.created++;
+      weeksInQuarter.set(key, entry);
+    }
+
+    for (const inc of quarterIncidents) {
+      if (inc.resolvedAt !== null) {
+        const { week, year: wYear } = getWeekNumber(inc.resolvedAt);
+        const key = `${wYear}-W${String(week).padStart(2, '0')}`;
+        const entry = weeksInQuarter.get(key) ?? { created: 0, resolved: 0 };
+        entry.resolved++;
+        weeksInQuarter.set(key, entry);
+      }
+    }
+
+    for (const [key, data] of weeksInQuarter.entries()) {
+      const [yStr, wStr] = key.split('-W');
+      const w = parseInt(wStr, 10);
+      const y = parseInt(yStr, 10);
+      const { start: wStart } = weekStartEnd(w, y);
+      weeklyTrend.push({
+        weekLabel: `Sem. ${w} — ${y}`,
+        date: wStart.toISOString().slice(0, 10),
+        created: data.created,
+        resolved: data.resolved,
       });
     }
 
-    // ── 8. Comparaison avec S-1 ──
-    let comparison: WeeklyReportComparison | null = null;
-    if (week > 1 || (week === 1 && year > 2025)) {
-      const prevWeek = week > 1 ? week - 1 : 52;
-      const prevYear = week > 1 ? year : year - 1;
-      const prev = await this.getWeeklyReport(prevWeek, prevYear, user);
+    weeklyTrend.sort((a, b) => a.date.localeCompare(b.date));
+
+    // ── 8. Comparaison avec T-1 ──
+    let comparison: QuarterlyReportComparison | null = null;
+    const prevQuarter = quarter > 1 ? quarter - 1 : 4;
+    const prevYear = quarter > 1 ? year : year - 1;
+
+    if (await this.hasDataForQuarter(prevQuarter, prevYear, user)) {
+      const prev = await this.getQuarterlyReport(prevQuarter, prevYear, user);
 
       comparison = {
-        previousWeek: prev.kpi,
+        previousQuarter: prev.kpi,
         resolutionRateChange:
           rawRate !== null && prev.kpi.resolutionRate !== null
             ? Math.round((rawRate - prev.kpi.resolutionRate) * 100) / 100
@@ -362,7 +411,7 @@ export class WeeklyReportService {
       };
     }
 
-    // ── 9. Incidents détaillés (créés ou résolus pendant la semaine, max 50) ──
+    // ── 9. Incidents détaillés (max 50) ──
     const INCIDENT_LIMIT = 50;
     const rawIncidents = await prisma.incident.findMany({
       where: {
@@ -384,10 +433,9 @@ export class WeeklyReportService {
       take: INCIDENT_LIMIT + 1,
     });
 
-    const hasMore = rawIncidents.length > INCIDENT_LIMIT;
     const limitedIncidents = rawIncidents.slice(0, INCIDENT_LIMIT);
 
-    const incidents: WeeklyReportIncidentDetail[] = limitedIncidents.map((inc) => {
+    const incidents: QuarterlyReportIncidentDetail[] = limitedIncidents.map((inc) => {
       const mapPriority = (c: string) => {
         switch (c) { case 'Critique': return 'Critique'; case 'Haute': return 'Haute'; case 'Moyenne': return 'Moyenne'; case 'Faible': return 'Basse'; default: return c; }
       };
@@ -423,46 +471,31 @@ export class WeeklyReportService {
       },
       byPriority,
       byService,
-      dailyTrend,
+      weeklyTrend,
       comparison,
       incidents,
     };
   }
 
-  /** Raccourci : rapport de la semaine courante */
-  async getCurrentWeekReport(
+  /** Raccourci : rapport du trimestre courant */
+  async getCurrentQuarterReport(
     user: { id: number; roles: string[]; siteId?: number },
-  ): Promise<WeeklyReportData> {
+  ): Promise<QuarterlyReportData> {
     const now = new Date();
-    const { week, year } = getWeekNumber(now);
-    return this.getWeeklyReport(week, year, user);
+    const month = now.getUTCMonth(); // 0-11
+    const year = now.getUTCFullYear();
+    const quarter = Math.floor(month / 3) + 1;
+    return this.getQuarterlyReport(quarter, year, user);
   }
 
   /**
-   * Raccourci : rapport de la semaine précédente (S-1).
-   * Utilisé par l'envoi automatique du lundi matin : la semaine courante vient
-   * de commencer, c'est donc S-1 qui doit être communiquée.
+   * Génère une liste de tous les trimestres disponibles depuis le premier incident.
    */
-  async getPreviousWeekReport(
+  async getAvailableQuarters(
     user: { id: number; roles: string[]; siteId?: number },
-  ): Promise<WeeklyReportData> {
-    // -7 jours puis numéro de semaine ISO : gère les changements d'année
-    // (ex. semaine 1 -> semaine 52/53 de l'année précédente).
-    const { week, year } = getWeekNumber(new Date(Date.now() - 7 * 86400000));
-    return this.getWeeklyReport(week, year, user);
-  }
-
-  /**
-   * Génère une liste continue de toutes les semaines depuis le premier incident
-   * jusqu'à la semaine courante (incluse). Utile pour voir les semaines sans
-   * création d'incident, et toujours voir la semaine en cours.
-   */
-  async getAvailableWeeks(
-    user: { id: number; roles: string[]; siteId?: number },
-  ): Promise<WeeklyReportPeriod[]> {
+  ): Promise<QuarterlyReportPeriod[]> {
     const userFilter = buildUserFilter(user);
 
-    // Trouver la date du premier incident (pour la borne min)
     const firstIncident = await prisma.incident.findFirst({
       where: { deletedAt: null, ...userFilter },
       select: { createdAt: true },
@@ -470,43 +503,36 @@ export class WeeklyReportService {
     });
 
     const now = new Date();
-    const currentWeek = getWeekNumber(now);
+    const currentMonth = now.getUTCMonth();
+    const currentYear = now.getUTCFullYear();
+    const currentQuarter = Math.floor(currentMonth / 3) + 1;
 
-    // Semaine du premier incident, ou semaine courante si aucun incident
-    const minWeek = firstIncident
-      ? getWeekNumber(firstIncident.createdAt)
-      : currentWeek;
+    const minQuarter = firstIncident
+      ? { quarter: Math.floor(firstIncident.createdAt.getUTCMonth() / 3) + 1, year: firstIncident.createdAt.getUTCFullYear() }
+      : { quarter: currentQuarter, year: currentYear };
 
-    // Générer une plage continue de minWeek → currentWeek
-    const weeks: WeeklyReportPeriod[] = [];
-    let w = minWeek.week;
-    let y = minWeek.year;
+    const quarters: QuarterlyReportPeriod[] = [];
+    let q = minQuarter.quarter;
+    let y = minQuarter.year;
 
     while (true) {
-      const { start, end } = weekStartEnd(w, y);
-      weeks.push(formatPeriod(start, end));
+      const { start, end } = quarterStartEnd(q, y);
+      quarters.push(formatPeriod(start, end, q));
 
-      // Condition d'arrêt : on a dépassé la semaine courante
-      if (y === currentWeek.year && w >= currentWeek.week) break;
-      if (y > currentWeek.year) break;
+      if (y === currentYear && q >= currentQuarter) break;
+      if (y > currentYear) break;
 
-      // Semaine suivante
-      w++;
-      if (w > 52) {
-        // Gestion des années ISO (53 semaines possibles)
-        const checkDate = new Date(y, 11, 31);
-        const maxWeek = getWeekNumber(checkDate).week;
-        if (w > maxWeek) {
-          w = 1;
-          y++;
-        }
+      q++;
+      if (q > 4) {
+        q = 1;
+        y++;
       }
     }
 
-    // Tri décroissant (la plus récente en premier)
-    return weeks.sort((a, b) => {
+    // Tri décroissant (le plus récent en premier)
+    return quarters.sort((a, b) => {
       if (a.year !== b.year) return b.year - a.year;
-      return b.weekNumber - a.weekNumber;
+      return b.quarter - a.quarter;
     });
   }
 }

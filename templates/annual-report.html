@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Rapport annuel (Bilan)</title>
+  <style>
+    /* ===========================
+       GLOBAL
+    ============================ */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 10px;
+      color: #1e293b;
+      line-height: 1.5;
+      padding: 20px;
+    }
+
+    /* ===========================
+       HEADER
+    ============================ */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 3px solid #16a34a;
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+    }
+    .header img { height: 50px; }
+    .header-right { text-align: right; font-size: 10px; line-height: 1.4; color: #475569; }
+    .header-right strong { font-size: 12px; color: #1e293b; }
+
+    /* ===========================
+       TITRE
+    ============================ */
+    .report-title {
+      text-align: center;
+      font-size: 18px;
+      font-weight: 700;
+      color: #166534;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+    .report-subtitle {
+      text-align: center;
+      font-size: 11px;
+      color: #64748b;
+      margin-bottom: 20px;
+    }
+    .report-period {
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 4px;
+    }
+
+    /* ===========================
+       KPI CARDS
+    ============================ */
+    .kpi-grid {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .kpi-card {
+      flex: 1;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 14px;
+      text-align: center;
+    }
+    .kpi-card.green { border-color: #bbf7d0; background: #f0fdf4; }
+    .kpi-card.blue  { border-color: #bfdbfe; background: #eff6ff; }
+    .kpi-card.amber { border-color: #fde68a; background: #fffbeb; }
+    .kpi-card.slate { border-color: #cbd5e1; background: #f8fafc; }
+    .kpi-card .label { font-size: 8px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin-bottom: 4px; }
+    .kpi-card .value { font-size: 22px; font-weight: 700; color: #1e293b; }
+    .kpi-card .note { font-size: 8px; color: #94a3b8; margin-top: 2px; }
+
+    /* ===========================
+       SECTIONS
+    ============================ */
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #166534;
+      border-bottom: 1px solid #dcfce7;
+      padding-bottom: 4px;
+      margin-bottom: 10px;
+      margin-top: 18px;
+    }
+
+    /* ===========================
+       TABLES
+    ============================ */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 14px;
+    }
+    thead th {
+      background: #f1f5f9;
+      padding: 6px 8px;
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      text-align: left;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+    }
+    tbody td {
+      padding: 5px 8px;
+      border: 1px solid #e2e8f0;
+      font-size: 9px;
+    }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .empty { text-align: center; color: #94a3b8; font-style: italic; padding: 14px; }
+
+    /* ===========================
+       BARRES DE PROGRESSION
+    ============================ */
+    .bar-bg {
+      width: 60px; height: 6px;
+      background: #e2e8f0;
+      border-radius: 3px;
+      display: inline-block;
+      vertical-align: middle;
+      margin-left: 4px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      background: #16a34a;
+      border-radius: 3px;
+    }
+
+    /* ===========================
+       MINI-BAR TREND (mensuel)
+    ============================ */
+    .mini-bar {
+      width: 80px; height: 14px;
+      display: inline-flex;
+      border-radius: 3px;
+      overflow: hidden;
+      gap: 1px;
+    }
+    .bar-created { background: #3b82f6; height: 100%; }
+    .bar-resolved { background: #22c55e; height: 100%; }
+
+    /* ===========================
+       VARIATIONS
+    ============================ */
+    .good { color: #16a34a; font-weight: 600; }
+    .bad  { color: #dc2626; font-weight: 600; }
+    .neutral { color: #64748b; }
+
+    /* ===========================
+       FOOTER
+    ============================ */
+    .footer {
+      margin-top: 30px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 8px;
+      color: #94a3b8;
+      text-align: center;
+    }
+
+    /* ===========================
+       TWO-COLUMN LAYOUT
+    ============================ */
+    .two-col {
+      display: flex;
+      gap: 16px;
+    }
+    .two-col > div { flex: 1; }
+
+    /* ===========================
+       SMALL TEXT
+    ============================ */
+    .text-muted { color: #94a3b8; font-size: 8px; }
+
+    /* ===========================
+       PRINT
+    ============================ */
+    @page { size: A4 landscape; margin: 12mm; }
+  </style>
+</head>
+<body>
+
+  <!-- ==================== HEADER ==================== -->
+  <div class="header">
+    <img src="{{LOGO_URL}}" alt="Logo" />
+    <div class="header-right">
+      <strong>SOREPCO SA</strong><br/>
+      Commerce Général - Import - Export<br/>
+      Douala - Cameroun
+    </div>
+  </div>
+
+  <!-- ==================== TITRE ==================== -->
+  <div class="report-title">Rapport Annuel — Bilan</div>
+  <div class="report-period">Année {{PERIOD_LABEL}}</div>
+  <div class="report-subtitle">Du {{PERIOD_START}} au {{PERIOD_END}} · Exporté le {{EXPORT_DATE}}</div>
+
+  <!-- ==================== KPI CARDS ==================== -->
+  <div class="kpi-grid">
+    <div class="kpi-card blue">
+      <div class="label">Créés</div>
+      <div class="value">{{KPI_CREATED}}</div>
+      <div class="note">Nouveaux déclarés cette année</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="label">Résolus</div>
+      <div class="value">{{KPI_RESOLVED}}</div>
+      <div class="note">Traités cette année</div>
+    </div>
+    <div class="kpi-card amber">
+      <div class="label">Taux de résolution</div>
+      <div class="value">{{KPI_RATE}}</div>
+      <div class="note">{{KPI_EXTRA_NOTE}}</div>
+    </div>
+    <div class="kpi-card slate">
+      <div class="label">Incidents en cours (fin)</div>
+      <div class="value">{{KPI_BACKLOG_END}}</div>
+      <div class="note">En début d'année : {{KPI_BACKLOG_START}}</div>
+    </div>
+  </div>
+
+  <!-- ==================== MÉTRIQUES TEMPORELLES ==================== -->
+  <div class="kpi-grid" style="margin-bottom: 10px;">
+    <div class="kpi-card slate">
+      <div class="label">Tps moyen résolution</div>
+      <div class="value" style="font-size:16px;">{{KPI_AVG_RES}}</div>
+    </div>
+    <div class="kpi-card slate">
+      <div class="label">Tps moyen prise en charge</div>
+      <div class="value" style="font-size:16px;">{{KPI_AVG_TIC}}</div>
+    </div>
+  </div>
+
+  <!-- ==================== COMPARAISON N-1 ==================== -->
+  <div class="section-title">📈 Comparaison N-1</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:28%">Métrique</th>
+        <th style="width:22%">Année courante</th>
+        <th style="width:22%">N-1</th>
+        <th style="width:28%">Variation</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{COMPARISON_ROWS}}
+    </tbody>
+  </table>
+
+  <!-- ==================== PAR TRIMESTRE ==================== -->
+  <div class="section-title">🗓️ Répartition par trimestre</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Trimestre</th>
+        <th class="num">Créés</th>
+        <th class="num">Résolus</th>
+        <th class="num">Taux</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{QUARTER_ROWS}}
+    </tbody>
+  </table>
+
+  <!-- ==================== TREND MENSUEL ==================== -->
+  <div class="section-title">📊 Tendance Mensuelle</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Mois</th>
+        <th class="num">Créés</th>
+        <th class="num">Résolus</th>
+        <th style="width:30%">Volume (bleu = créés, vert = résolus)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{MONTHLY_TREND_ROWS}}
+    </tbody>
+  </table>
+
+  <!-- ==================== 2 COLONNES : SERVICE + PRIORITÉ ==================== -->
+  <div class="two-col">
+    <div>
+      <div class="section-title">🏢 Par Service</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th class="num">Créés</th>
+            <th class="num">Résolus</th>
+            <th class="num">Taux</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{SERVICE_ROWS}}
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <div class="section-title">⚠️ Par Priorité</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Priorité</th>
+            <th class="num">Créés</th>
+            <th class="num">Résolus</th>
+            <th class="num">Taux</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{PRIORITY_ROWS}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== FOOTER ==================== -->
+  <div class="footer">
+    Rapport généré automatiquement — Système de gestion des incidents SOREPCO SA<br/>
+    Document confidentiel — Diffusion interne
+  </div>
+
+</body>
+</html>

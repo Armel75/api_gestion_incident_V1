@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Rapport SLA — Respect des délais</title>
+  <style>
+    /* ===========================
+       GLOBAL
+    ============================ */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 10px;
+      color: #1e293b;
+      line-height: 1.5;
+      padding: 20px;
+    }
+
+    /* ===========================
+       HEADER
+    ============================ */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 3px solid #16a34a;
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+    }
+    .header img { height: 50px; }
+    .header-right { text-align: right; font-size: 10px; line-height: 1.4; color: #475569; }
+    .header-right strong { font-size: 12px; color: #1e293b; }
+
+    /* ===========================
+       TITRE
+    ============================ */
+    .report-title {
+      text-align: center;
+      font-size: 18px;
+      font-weight: 700;
+      color: #166534;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+    .report-subtitle {
+      text-align: center;
+      font-size: 11px;
+      color: #64748b;
+      margin-bottom: 20px;
+    }
+    .report-period {
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 4px;
+    }
+
+    /* ===========================
+       KPI CARDS
+    ============================ */
+    .kpi-grid {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .kpi-card {
+      flex: 1;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 14px;
+      text-align: center;
+    }
+    .kpi-card.green { border-color: #bbf7d0; background: #f0fdf4; }
+    .kpi-card.blue  { border-color: #bfdbfe; background: #eff6ff; }
+    .kpi-card.amber { border-color: #fde68a; background: #fffbeb; }
+    .kpi-card.red   { border-color: #fecaca; background: #fef2f2; }
+    .kpi-card.slate { border-color: #cbd5e1; background: #f8fafc; }
+    .kpi-card .label { font-size: 8px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin-bottom: 4px; }
+    .kpi-card .value { font-size: 22px; font-weight: 700; color: #1e293b; }
+    .kpi-card .note { font-size: 8px; color: #94a3b8; margin-top: 2px; }
+
+    /* ===========================
+       SECTIONS
+    ============================ */
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #166534;
+      border-bottom: 1px solid #dcfce7;
+      padding-bottom: 4px;
+      margin-bottom: 10px;
+      margin-top: 18px;
+    }
+
+    /* ===========================
+       TABLES
+    ============================ */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 14px;
+    }
+    thead th {
+      background: #f1f5f9;
+      padding: 6px 8px;
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      text-align: left;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+    }
+    tbody td {
+      padding: 5px 8px;
+      border: 1px solid #e2e8f0;
+      font-size: 9px;
+    }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .empty { text-align: center; color: #94a3b8; font-style: italic; padding: 14px; }
+    .good { color: #16a34a; font-weight: 600; }
+    .bad  { color: #dc2626; font-weight: 600; }
+
+    /* ===========================
+       BARRES DE PROGRESSION
+    ============================ */
+    .bar-bg {
+      width: 60px; height: 6px;
+      background: #e2e8f0;
+      border-radius: 3px;
+      display: inline-block;
+      vertical-align: middle;
+      margin-left: 4px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      background: #16a34a;
+      border-radius: 3px;
+    }
+
+    /* ===========================
+       TWO-COLUMN LAYOUT
+    ============================ */
+    .two-col {
+      display: flex;
+      gap: 16px;
+    }
+    .two-col > div { flex: 1; }
+
+    /* ===========================
+       SMALL TEXT
+    ============================ */
+    .text-muted { color: #94a3b8; font-size: 8px; }
+    .desc-cell { max-width: 180px; word-wrap: break-word; }
+
+    /* ===========================
+       FOOTER
+    ============================ */
+    .footer {
+      margin-top: 30px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 8px;
+      color: #94a3b8;
+      text-align: center;
+    }
+
+    /* ===========================
+       PRINT
+    ============================ */
+    @page { size: A4 landscape; margin: 12mm; }
+  </style>
+</head>
+<body>
+
+  <!-- ==================== HEADER ==================== -->
+  <div class="header">
+    <img src="{{LOGO_URL}}" alt="Logo" />
+    <div class="header-right">
+      <strong>SOREPCO SA</strong><br/>
+      Commerce Général - Import - Export<br/>
+      Douala - Cameroun
+    </div>
+  </div>
+
+  <!-- ==================== TITRE ==================== -->
+  <div class="report-title">Rapport SLA — Respect des délais</div>
+  <div class="report-period">{{PERIOD_LABEL}}</div>
+  <div class="report-subtitle">Du {{PERIOD_START}} au {{PERIOD_END}} · Exporté le {{EXPORT_DATE}}</div>
+
+  <!-- ==================== KPI CARDS ==================== -->
+  <div class="kpi-grid">
+    <div class="kpi-card blue">
+      <div class="label">Résolus (période)</div>
+      <div class="value">{{KPI_RESOLVED}}</div>
+      <div class="note">Incidents traités sur la période</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="label">Respectés (délais)</div>
+      <div class="value">{{KPI_RESPECTED}}</div>
+      <div class="note">Résolus avant l'échéance</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="label">En retard</div>
+      <div class="value">{{KPI_BREACHED}}</div>
+      <div class="note">Résolus après l'échéance</div>
+    </div>
+    <div class="kpi-card amber">
+      <div class="label">Taux de respect</div>
+      <div class="value">{{KPI_SLA}}</div>
+      <div class="note">Objectif de qualité</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="label">Backlog actif en retard</div>
+      <div class="value" style="font-size:18px;">{{KPI_OVERDUE}}</div>
+      <div class="note">Encore ouverts après échéance</div>
+    </div>
+  </div>
+
+  <!-- ==================== MÉTRIQUE TEMPORELLE ==================== -->
+  <div class="kpi-grid" style="margin-bottom: 10px;">
+    <div class="kpi-card slate">
+      <div class="label">Tps moyen résolution</div>
+      <div class="value" style="font-size:16px;">{{KPI_AVG_RES}}</div>
+    </div>
+  </div>
+
+  <!-- ==================== 2 COLONNES : PRIORITÉ + SERVICE ==================== -->
+  <div class="two-col">
+    <div>
+      <div class="section-title">⚠️ Respect par priorité</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Priorité</th>
+            <th class="num">Résolus</th>
+            <th class="num">Respectés</th>
+            <th class="num">En retard</th>
+            <th class="num">Taux</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{PRIORITY_ROWS}}
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <div class="section-title">🏢 Respect par service</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th class="num">Résolus</th>
+            <th class="num">Respectés</th>
+            <th class="num">En retard</th>
+            <th class="num">Taux</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{SERVICE_ROWS}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== DÉTAIL DES RETARDS ==================== -->
+  <div class="section-title">⏰ Détail des incidents en retard</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:11%">Réf.</th>
+        <th style="width:22%">Description</th>
+        <th style="width:9%">Statut</th>
+        <th style="width:9%">Priorité</th>
+        <th style="width:13%">Service</th>
+        <th style="width:10%">Échéance</th>
+        <th style="width:10%">Résolu le</th>
+        <th style="width:10%">Retard</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{DELAYED_ROWS}}
+    </tbody>
+  </table>
+
+  <!-- ==================== FOOTER ==================== -->
+  <div class="footer">
+    Respect du délai : incident résolu avant sa date d'échéance (dueDate).<br/>
+    Rapport généré automatiquement — Système de gestion des incidents SOREPCO SA — Document confidentiel
+  </div>
+
+</body>
+</html>

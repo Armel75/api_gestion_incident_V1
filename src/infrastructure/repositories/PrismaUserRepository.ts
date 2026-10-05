@@ -104,11 +104,42 @@ export class PrismaUserRepository implements IUserRepository {
     return user ? this.mapToUser(user) : null;
   }
 
-  async findAll(skip: number, take: number): Promise<User[]> {
+  async findAll(skip?: number, take?: number, search?: string): Promise<User[]> {
+    const where: any = { deletedAt: null };
+
+    // Recherche multi-colonnes (serveur) : couvre toute la table, pas seulement la page chargée.
+    const term = search?.trim();
+    if (term) {
+      const or: any[] = [
+        { username: { contains: term } },
+        { email: { contains: term } },
+        { matricule: { contains: term } },
+        { firstName: { contains: term } },
+        { lastName: { contains: term } },
+        { roles: { some: { role: { name: { contains: term } } } } },
+        { site: { name: { contains: term } } }
+      ];
+
+      // Recherche par ID (si le terme est un entier)
+      if (/^\d+$/.test(term)) {
+        or.push({ id: Number(term) });
+      }
+
+      // Recherche par statut : « actif » / « inactif »
+      const lower = term.toLowerCase();
+      if (lower.includes('inactif')) {
+        or.push({ isActive: false });
+      } else if (lower.includes('actif')) {
+        or.push({ isActive: true });
+      }
+
+      where.OR = or;
+    }
+
     const users = await prisma.user.findMany({
-      skip,
-      take,
-      where: { deletedAt: null },
+      ...(skip !== undefined ? { skip } : {}),
+      ...(take !== undefined ? { take } : {}),
+      where,
       orderBy: { id: 'desc' }, // Tri décroissant par ID
       include: {
         roles: { include: { role: true } },

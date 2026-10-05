@@ -45,3 +45,15 @@ export class ValidationError extends AppError {
     this.details = details;
   }
 }
+
+/**
+ * Erreur métier : le moteur de génération PDF (Chromium/Playwright)
+ * est indisponible sur le serveur (non installé, corrompu, échec au
+ * lancement). Permet aux contrôleurs d'exports PDF de renvoyer un
+ * message clair au lieu d'un 500 générique.
+ */
+export class PdfUnavailableError extends AppError {
+  constructor(message: string = 'Export PDF indisponible : le moteur de génération (Chromium) est absent ou ne peut pas démarrer sur le serveur. Contactez l’administrateur.') {
+    super(message, 503, 'PDF_ENGINE_UNAVAILABLE');
+  }
+}
